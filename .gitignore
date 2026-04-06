@@ -1,10 +1,16 @@
 # dependencies
 node_modules
+.venv
 
 # next.js
 .next
 next-env.d.ts
 
 # build
-/app
 /dist
+
+# inference temp uploads
+.tmp-infer
+
+# large local weights (hf download Chappieut/MarvelRivals-Detection-Suite --local-dir models/MarvelRivals-Detection-Suite)
+/models/MarvelRivals-Detection-Suite
