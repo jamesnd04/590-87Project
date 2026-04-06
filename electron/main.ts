@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, screen } from "electron";
 import path from "path";
 
 let win: BrowserWindow | null = null;
+const nextDevUrl = process.env.NEXT_DEV_URL ?? "http://127.0.0.1:3000";
 
 function createWindow() {
   if (process.platform === "darwin") {
@@ -9,15 +10,15 @@ function createWindow() {
   }
 
   const winW = 320;
-  const winH = 220;
-  const { width: screenW } = screen.getPrimaryDisplay().bounds;
+  const { width: screenW, height: screenH } = screen.getPrimaryDisplay().bounds;
+  const winH = screenH - 36;
 
   win = new BrowserWindow({
     width: winW,
     height: winH,
-    x: screenW - winW - 10,
-    y: 20,
-    title: "Counter",
+    x: screenW - winW,
+    y: 0,
+    title: "Overlay",
     transparent: true,
     backgroundColor: "#00000000",
     frame: false,
@@ -37,15 +38,7 @@ function createWindow() {
   // Raise overlay above "normal" windows.
   win.setAlwaysOnTop(true, "screen-saver");
 
-  // Load a static HTML renderer with a counter. This keeps the example
-  // self-contained (no Next.js required).
-  const counterHtmlPath = path.join(
-    __dirname,
-    "..",
-    "electron",
-    "counter.html"
-  );
-  win.loadFile(counterHtmlPath);
+  win.loadURL(nextDevUrl);
 
   win.on("closed", () => {
     win = null;

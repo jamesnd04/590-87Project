@@ -4,9 +4,10 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "dev:next": "next dev --port 3000",
+    "dev:next": "next dev --hostname 127.0.0.1 --port 3000",
     "dev:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --outdir=dist --external:electron --format=cjs && electron .",
-    "dev": "npm run dev:electron"
+    "dev:start-electron": "wait-on tcp:127.0.0.1:3000 && npm run dev:electron",
+    "dev": "concurrently \"npm run dev:next\" \"npm run dev:start-electron\""
   },
   "dependencies": {
     "next": "^15.3.0",
