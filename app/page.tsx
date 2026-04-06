@@ -1,65 +1,67 @@
-import Image from "next/image";
+"use client";
+
+const sections = [
+  {
+    title: "PERFORMANCE SUMMARY",
+    body: "High Damage/Blocked was notable, but lacked final impact. Focus on burst damage timing to confirm kills.",
+  },
+  {
+    title: "PLAYER FOCUS (Clarks)",
+    body: "Prioritize aiming during team fights. Clarks was the primary healing target but had the lowest accuracy at 19%.",
+  },
+  {
+    title: "ENEMY ALERT (Nick xe)",
+    body: "Check key ability timings. Enemy Nick xe (25 Eliminations) was not contested efficiently.",
+  },
+  {
+    title: "TEAM STRATEGY",
+    body: "Focus on target priority. The opposing team's healing (Stumberjones, awesom1fighter) often significantly out-paced our team. Target their supports earlier.",
+  },
+];
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="h-screen w-full flex justify-end p-3">
+      <aside
+        className="w-[300px] h-full rounded-2xl overflow-hidden flex flex-col border border-white/[0.06] shadow-2xl"
+        style={{
+          background: "rgba(14, 14, 26, 0.88)",
+          backdropFilter: "blur(18px)",
+          WebkitBackdropFilter: "blur(18px)",
+        }}
+      >
+        <div
+          className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        >
+          <h1 className="text-[11px] font-bold tracking-wide text-blue-400">
+            POST-MATCH ANALYSIS &amp; ADVICE
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => (window as any).ipc?.quit()}
+            className="w-6 h-6 flex items-center justify-center rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-400/10 transition-colors text-sm font-bold cursor-pointer"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            &times;
+          </button>
         </div>
-      </main>
+
+        <div className="flex-1 overflow-y-auto">
+          {sections.map((s) => (
+            <div
+              key={s.title}
+              className="px-4 py-3 border-b border-white/[0.04]"
+            >
+              <h2 className="text-[11px] font-bold tracking-wide text-blue-400 mb-1.5">
+                {s.title}
+              </h2>
+              <p className="text-[12px] leading-relaxed text-zinc-400 font-mono">
+                {s.body}
+              </p>
+            </div>
+          ))}
+        </div>
+      </aside>
     </div>
   );
 }

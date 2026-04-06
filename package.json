@@ -1,26 +1,29 @@
 {
-  "name": "overlay",
-  "version": "0.1.0",
+  "name": "game-overlay",
+  "version": "1.0.0",
   "private": true,
+  "main": "dist/main.js",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "dev:next": "next dev --port 3000",
+    "dev:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --outdir=dist --external:electron --format=cjs && electron .",
+    "dev": "npm run dev:electron"
   },
   "dependencies": {
-    "next": "16.2.1",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "next": "^15.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.1",
+    "concurrently": "^9.0.0",
+    "esbuild": "^0.25.0",
+    "electron": "^30.0.0",
+    "postcss": "^8",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wait-on": "^9.0.0"
   }
 }
