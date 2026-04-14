@@ -2,6 +2,8 @@ import { spawn } from "child_process";
 import { existsSync } from "fs";
 import { mkdir, readFile, unlink, writeFile } from "fs/promises";
 import path from "path";
+import { externalContextLookup } from "@/lib/agent/external";
+import { semanticRetrieve } from "@/lib/agent/semantic";
 
 const STRATEGY_PATHS = [
   path.join(process.cwd(), "marvel_rivals_strategy.md"),
@@ -12,6 +14,7 @@ let strategyVocabularyCache: Set<string> | null = null;
 type Intent =
   | "image_analysis"
   | "strategy_question"
+  | "hero_data_lookup"
   | "relationship_question"
   | "external_api_lookup"
   | "general_chat";
@@ -53,13 +56,55 @@ function detectIntent(input: string, hasImage: boolean): Intent {
   if (isRelationshipQuestion(normalized)) {
     return "relationship_question";
   }
+  if (isCompositionOrMapQuestion(normalized)) {
+    return "strategy_question";
+  }
+  if (isHeroDataLookupQuestion(normalized)) {
+    return "hero_data_lookup";
+  }
   if (/(api|endpoint|external|live data|fetch data|stats)/.test(normalized)) {
     return "external_api_lookup";
   }
-  if (/(how|what|why|guide|strategy|pick|counter|team|hero|comp)/.test(normalized)) {
+  if (/(how|what|why|guide|strategy|pick|counter|team|hero|comp|who|which|list)/.test(normalized)) {
     return "strategy_question";
   }
   return "general_chat";
+}
+
+function isHeroDataLookupQuestion(input: string): boolean {
+  return /(ability|abilities|cooldown|hero info|hero details|skin|skins|achievement|achievements|item|items|nameplate|mvp|emote|spray|player profile|match history|search player|username)/.test(
+    input,
+  );
+}
+
+function isCompositionOrMapQuestion(input: string): boolean {
+  return /(composition|comp|team comp|map|maps|domination|convoy|convergence|lineup|draft)/.test(input);
+}
+
+function isGeneralHeroQuestion(input: string): boolean {
+  const normalized = normalizeQueryText(input);
+  const heroes = findMentionedHeroes(normalized);
+  if (heroes.length === 0) {
+    return false;
+  }
+  return !isRelationshipQuestion(normalized) && !isCompositionOrMapQuestion(normalized);
+}
+
+function buildSearchPlan(intent: Intent, userInput: string): SearchSource[] {
+  const normalized = userInput.toLowerCase();
+  const plan: SearchSource[] = [];
+
+  if (intent === "hero_data_lookup" || isGeneralHeroQuestion(normalized)) {
+    plan.push("hero_ability_tool", "external_web", "strategy_rag");
+  } else if (intent === "relationship_question" || isCompositionOrMapQuestion(normalized)) {
+    plan.push("strategy_rag", "hero_ability_tool", "external_web");
+  } else if (intent === "external_api_lookup") {
+    plan.push("external_web", "strategy_rag", "hero_ability_tool");
+  } else {
+    plan.push("strategy_rag", "hero_ability_tool", "external_web");
+  }
+
+  return Array.from(new Set(plan));
 }
 
 function pythonBinary() {
@@ -147,6 +192,36 @@ function splitTeamClasses(predictionClasses: string[]): ImageContext {
   };
 }
 
+/** Shown to the user immediately before the main answer when an image was analyzed. */
+function formatCharactersDetectedPrefix(yolo: YoloResult | null): string {
+  if (!yolo) {
+    return "Characters detected from image:\n(no detection result)";
+  }
+  if (!yolo.ok) {
+    return `Characters detected from image:\n(detection failed: ${yolo.error || "unknown error"})`;
+  }
+  const ic = yolo.imageContext;
+  const classes = yolo.predictionClasses;
+  const lines: string[] = ["Characters detected from image:"];
+  if (ic && (ic.yourTeam.length > 0 || ic.enemyTeam.length > 0)) {
+    lines.push(`Your team: ${ic.yourTeam.join(", ") || "(none)"}`);
+    lines.push(`Enemy team: ${ic.enemyTeam.join(", ") || "(none)"}`);
+  } else if (classes.length > 0) {
+    lines.push(classes.join(", "));
+  } else {
+    lines.push("(no character classes returned)");
+  }
+  return lines.join("\n");
+}
+
+function prependDetectionToResponse(image: Blob | null, yolo: YoloResult | null, body: string): string {
+  if (!image) {
+    return body;
+  }
+  const prefix = formatCharactersDetectedPrefix(yolo);
+  return `${prefix}\n\n${body}`;
+}
+
 export async function runYoloTool(image: Blob, layoutPreset: string): Promise<YoloResult> {
   const tmpRoot = path.join(process.cwd(), ".tmp-infer");
   await mkdir(tmpRoot, { recursive: true });
@@ -208,11 +283,66 @@ type StrategyChunk = {
   tokens: string[];
 };
 
+type HeroGuideRow = {
+  hero: string;
+  role: string;
+  styleTags: string;
+  summary: string;
+  roleGroup: "vanguard" | "duelist" | "strategist" | "unknown";
+};
+
+type HeroFacetQuery = {
+  styleTag: string | null;
+  roleTag: string | null;
+};
+
 type ScoredChunk = {
+  id: string;
   chunk: StrategyChunk;
   score: number;
   overlap: number;
 };
+
+type RetrievalSource = "local_guide" | "mcp" | "web";
+
+type StrategyRetrievalDiagnostics = {
+  normalizedQuery: string;
+  expandedQuery: string;
+  heroes: string[];
+  lexicalTopScore: number;
+  semanticTopScore: number;
+  confidence: number;
+  source: RetrievalSource;
+  fallbackReason?: string;
+};
+
+type StrategySearchResult = {
+  snippets: string[];
+  diagnostics: StrategyRetrievalDiagnostics;
+};
+
+type HeroAbilityToolName =
+  | "listHeroes"
+  | "getHeroAbilities"
+  | "getHeroInfo"
+  | "getHeroSkins"
+  | "listSkins"
+  | "listAchievements"
+  | "searchAchievement"
+  | "listItems"
+  | "getItemsByType"
+  | "listMaps"
+  | "filterMaps"
+  | "getPlayerProfile"
+  | "searchPlayer"
+  | "getPlayerMatchHistory";
+
+type HeroAbilityToolIntent = {
+  tool: HeroAbilityToolName;
+  subject?: string;
+};
+
+type SearchSource = "strategy_rag" | "hero_ability_tool" | "external_web";
 
 const HERO_NAMES = [
   "magneto",
@@ -446,7 +576,7 @@ function keywordFrequency(tokens: string[]): Map<string, number> {
   return out;
 }
 
-function scoreChunk(chunk: StrategyChunk, query: string, queryTokens: string[]): ScoredChunk {
+function scoreChunk(chunk: StrategyChunk, id: string, query: string, queryTokens: string[]): ScoredChunk {
   const querySet = new Set(queryTokens);
   const chunkFreq = keywordFrequency(chunk.tokens);
   let overlap = 0;
@@ -478,6 +608,7 @@ function scoreChunk(chunk: StrategyChunk, query: string, queryTokens: string[]):
   const score = lexicalScore + headingBoost + phraseBoost + relationBoost + multiHeroBoost + density;
 
   return {
+    id,
     chunk,
     score,
     overlap,
@@ -729,10 +860,259 @@ function deriveEntityRelations(snippets: string[]): string[] {
   return Array.from(relations).slice(0, 30);
 }
 
-export async function searchStrategyTool(query: string): Promise<string[]> {
+function parseMentionedItemType(query: string): "NAMEPLATE" | "MVP" | "EMOTE" | "SPRAY" | null {
+  const lower = query.toLowerCase();
+  if (lower.includes("nameplate")) return "NAMEPLATE";
+  if (/\bmvp\b/.test(lower)) return "MVP";
+  if (lower.includes("emote")) return "EMOTE";
+  if (lower.includes("spray")) return "SPRAY";
+  return null;
+}
+
+function resolveHeroAbilityToolIntent(query: string): HeroAbilityToolIntent {
+  const lower = normalizeQueryText(query);
+  const heroes = findMentionedHeroes(lower);
+  const hero = heroes[0];
+  const itemType = parseMentionedItemType(lower);
+
+  if (/(match history|recent matches|last matches)/.test(lower)) {
+    return { tool: "getPlayerMatchHistory", subject: query };
+  }
+  if (/(player profile|profile stats)/.test(lower)) {
+    return { tool: "getPlayerProfile", subject: query };
+  }
+  if (/(search player|find player|username)/.test(lower)) {
+    return { tool: "searchPlayer", subject: query };
+  }
+  if (/(filter maps|map type|convoy|domination|convergence)/.test(lower)) {
+    return { tool: "filterMaps", subject: query };
+  }
+  if (/\bmaps?\b/.test(lower)) {
+    return { tool: "listMaps" };
+  }
+  if (/(search achievement|achievement .*named|achievement .*called)/.test(lower)) {
+    return { tool: "searchAchievement", subject: query };
+  }
+  if (/\bachievements?\b/.test(lower)) {
+    return { tool: "listAchievements" };
+  }
+  if (itemType) {
+    return { tool: "getItemsByType", subject: itemType };
+  }
+  if (/\bitems?\b/.test(lower)) {
+    return { tool: "listItems" };
+  }
+  if (/\bskins?\b/.test(lower) && hero) {
+    return { tool: "getHeroSkins", subject: hero };
+  }
+  if (/\bskins?\b/.test(lower)) {
+    return { tool: "listSkins" };
+  }
+  if (/(abilities|ability|cooldown|kit|skills)/.test(lower) && hero) {
+    return { tool: "getHeroAbilities", subject: hero };
+  }
+  if ((/(hero info|hero details|tell me about|what does .* do)/.test(lower) || hero) && hero) {
+    return { tool: "getHeroInfo", subject: hero };
+  }
+  return { tool: "listHeroes" };
+}
+
+function semanticRagEnabled(): boolean {
+  return process.env.ENABLE_SEMANTIC_RAG === "1";
+}
+
+function extractHeroGuideRows(content: string): HeroGuideRow[] {
+  const lines = content.split("\n");
+  const rows: HeroGuideRow[] = [];
+  let currentRoleGroup: HeroGuideRow["roleGroup"] = "unknown";
+  let inHeroPlaystyleIndex = false;
+  for (const line of lines) {
+    const heading = line.trim().toLowerCase();
+    if (heading === "## 9. hero playstyle index") {
+      inHeroPlaystyleIndex = true;
+      currentRoleGroup = "unknown";
+      continue;
+    }
+    if (!inHeroPlaystyleIndex) {
+      continue;
+    }
+    if (/^##\s+/.test(heading) && heading !== "## 9. hero playstyle index") {
+      break;
+    }
+    if (heading === "### vanguards") {
+      currentRoleGroup = "vanguard";
+      continue;
+    }
+    if (heading === "### duelists") {
+      currentRoleGroup = "duelist";
+      continue;
+    }
+    if (heading === "### strategists") {
+      currentRoleGroup = "strategist";
+      continue;
+    }
+    if (!line.startsWith("|")) {
+      continue;
+    }
+    const cells = line
+      .split("|")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (cells.length < 3) {
+      continue;
+    }
+    const heroCell = cells[0] || "";
+    const styleCell = cells[1] || "";
+    const summaryCell = cells[2] || "";
+    const roleCell = currentRoleGroup === "unknown" ? "" : currentRoleGroup;
+    const hero = heroCell.replace(/\*\*/g, "").trim().toLowerCase();
+    if (!hero || hero === "hero") {
+      continue;
+    }
+    rows.push({
+      hero,
+      role: roleCell.replace(/\*\*/g, "").trim(),
+      styleTags: styleCell.replace(/\*\*/g, "").trim(),
+      summary: summaryCell.replace(/\*\*/g, "").trim(),
+      roleGroup: currentRoleGroup,
+    });
+  }
+  return rows;
+}
+
+function expandHeroAliases(hero: string): string[] {
+  const aliases = [hero];
+  const compactHero = hero.replace(/[^a-z0-9]/g, "");
+  aliases.push(compactHero);
+  for (const [alias, canonical] of Object.entries(HERO_ALIASES)) {
+    if (canonical === hero) {
+      aliases.push(alias);
+    }
+  }
+  return Array.from(new Set(aliases));
+}
+
+function rewriteQueryForRetrieval(normalizedQuery: string, heroes: string[]): string {
+  const lower = normalizedQuery.toLowerCase();
+  const asksPlaystyle = /(style|playstyle|archetype|role|what is|what style)/.test(lower);
+  const heroHints = heroes.length > 0 ? `${heroes.join(" ")} hero` : "";
+  if (asksPlaystyle) {
+    return `${normalizedQuery} ${heroHints} playstyle archetype role dive poke brawl`.trim();
+  }
+  return normalizedQuery;
+}
+
+function parseHeroFacetQuery(normalizedQuery: string): HeroFacetQuery | null {
+  const q = normalizedQuery.toLowerCase();
+  const isListStyle = /(who are|which heroes|list|show|what are)/.test(q);
+  if (!isListStyle) {
+    return null;
+  }
+
+  const styleTag = /\bdive\b/.test(q)
+    ? "dive"
+    : /\bpoke\b/.test(q)
+      ? "poke"
+      : /\bbrawl\b/.test(q)
+        ? "brawl"
+        : /\bcontrol\b/.test(q)
+          ? "control"
+          : /\bsustain\b/.test(q)
+            ? "sustain"
+            : null;
+
+  const roleTag = /\bduelist(s)?\b/.test(q)
+    ? "duelist"
+    : /\bvanguard(s)?\b/.test(q)
+      ? "vanguard"
+      : /\bstrategist(s)?\b/.test(q)
+        ? "strategist"
+        : null;
+
+  if (!styleTag && !roleTag) {
+    return null;
+  }
+  return { styleTag, roleTag };
+}
+
+function inferRoleFromHeroRow(row: HeroGuideRow): string | null {
+  if (row.roleGroup !== "unknown") {
+    return row.roleGroup;
+  }
+  const text = `${row.role} ${row.styleTags} ${row.summary}`.toLowerCase();
+  if (/\bduelist\b/.test(text) || /(melee assassin|assassin|marksman)/.test(text)) {
+    return "duelist";
+  }
+  if (/\bvanguard\b/.test(text) || /(tank|frontline|initiator|bruiser)/.test(text)) {
+    return "vanguard";
+  }
+  if (/\bstrategist\b/.test(text) || /(support|heal|healer|sustain)/.test(text)) {
+    return "strategist";
+  }
+  return null;
+}
+
+function parseStyleTagTokens(styleTags: string): string[] {
+  return styleTags
+    .toLowerCase()
+    .split(/[\/,|]+/g)
+    .map((part) => part.trim().replace(/\s+/g, "-"))
+    .filter(Boolean);
+}
+
+function runDeterministicFacetLookup(normalizedQuery: string, heroRows: HeroGuideRow[]): string[] | null {
+  const facet = parseHeroFacetQuery(normalizedQuery);
+  if (!facet) {
+    return null;
+  }
+
+  const matched = heroRows.filter((row) => {
+    const styleTokens = parseStyleTagTokens(row.styleTags);
+    const roleBag = `${row.roleGroup} ${row.role}`.toLowerCase();
+    const styleOk = facet.styleTag ? styleTokens.includes(facet.styleTag) : true;
+    const inferredRole = inferRoleFromHeroRow(row);
+    const roleOk = facet.roleTag ? inferredRole === facet.roleTag : true;
+    return styleOk && roleOk && roleBag.length > 0;
+  });
+
+  if (matched.length === 0) {
+    return [];
+  }
+
+  const heroes = matched.map((row) => row.hero).sort((a, b) => a.localeCompare(b));
+  const title = [facet.styleTag, facet.roleTag].filter(Boolean).join(" ");
+  const header = `[Facet match] ${title || "heroes"} (${heroes.length})\n${heroes.join(", ")}`;
+  const evidence = matched
+    .slice(0, 5)
+    .map((row) => `[Hero row] ${row.hero} | role=${row.roleGroup}/${row.role} | style=${row.styleTags}\n${row.summary}`);
+  return [header, ...evidence];
+}
+
+function retrievalConfidence(lexicalTopScore: number, semanticTopScore: number, heroes: string[]): number {
+  const heroBoost = heroes.length > 0 ? 0.1 : 0;
+  return Math.max(0, Math.min(1, lexicalTopScore / 8 + semanticTopScore * 0.6 + heroBoost));
+}
+
+function formatScoredSnippet(item: ScoredChunk): string {
+  return `[${item.chunk.heading}] score=${item.score.toFixed(2)} overlap=${item.overlap}\n${trimSnippet(item.chunk.body, 700)}`;
+}
+
+export async function searchStrategyTool(query: string): Promise<StrategySearchResult> {
   const strategyPath = STRATEGY_PATHS.find((candidate) => existsSync(candidate));
   if (!strategyPath) {
-    return ["No strategy guide file found. Expected marvel_rivals_strategy.md or marvel_rivals_strategy_guide.md."];
+    return {
+      snippets: ["No strategy guide file found. Expected marvel_rivals_strategy.md or marvel_rivals_strategy_guide.md."],
+      diagnostics: {
+        normalizedQuery: query,
+        expandedQuery: query,
+        heroes: [],
+        lexicalTopScore: 0,
+        semanticTopScore: 0,
+        confidence: 0,
+        source: "local_guide",
+        fallbackReason: "missing_strategy_file",
+      },
+    };
   }
 
   const content = await readFile(strategyPath, "utf-8");
@@ -742,31 +1122,107 @@ export async function searchStrategyTool(query: string): Promise<string[]> {
     );
   }
   const chunks = splitStrategyChunks(content);
+  const heroRows = extractHeroGuideRows(content);
 
   const normalizedQuery = normalizeQueryText(query);
-  const relationQuery = isRelationshipQuestion(normalizedQuery);
-  const expandedQuery = relationQuery
-    ? `${normalizedQuery} counters synergies works with play with team-up anti-dive anti-poke anti-brawl dive poke brawl`
-    : normalizedQuery;
-  const queryTokens = tokenize(expandedQuery);
+  const facetSnippets = runDeterministicFacetLookup(normalizedQuery, heroRows);
+  if (facetSnippets && facetSnippets.length > 0) {
+    return {
+      snippets: facetSnippets,
+      diagnostics: {
+        normalizedQuery,
+        expandedQuery: normalizedQuery,
+        heroes: findMentionedHeroes(normalizedQuery),
+        lexicalTopScore: 1,
+        semanticTopScore: 1,
+        confidence: 1,
+        source: "local_guide",
+        fallbackReason: "deterministic_facet_lookup",
+      },
+    };
+  }
   const mentionedHeroes = findMentionedHeroes(normalizedQuery);
+  const expandedQuery = rewriteQueryForRetrieval(normalizedQuery, mentionedHeroes);
+  const relationQuery = isRelationshipQuestion(normalizedQuery);
+  const retrievalQuery = relationQuery
+    ? `${expandedQuery} counters synergies works with play with team-up anti-dive anti-poke anti-brawl dive poke brawl`
+    : expandedQuery;
+  const queryTokens = tokenize(retrievalQuery);
   const ranked = chunks
-    .map((chunk) => scoreChunk(chunk, expandedQuery, queryTokens))
+    .map((chunk, idx) => scoreChunk(chunk, `chunk-${idx}`, retrievalQuery, queryTokens))
     .filter((item) => item.score > 0 || queryTokens.length === 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 12);
+  const lexicalTopScore = ranked[0]?.score ?? 0;
 
-  const diverseTop = takeDiverseTop(ranked, 4);
+  const semanticDocs = [
+    ...chunks.map((chunk, idx) => ({ id: `chunk-${idx}`, text: chunk.fullText })),
+    ...heroRows.map((row, idx) => ({
+      id: `hero-row-${idx}`,
+      text: `${row.hero} ${row.roleGroup} ${row.role} ${row.styleTags} ${row.summary}`,
+    })),
+  ];
+  const semantic = await semanticRetrieve({
+    enabled: semanticRagEnabled(),
+    query: retrievalQuery,
+    docs: semanticDocs,
+    topK: 8,
+    corpusId: `${strategyPath}:${content.length}`,
+  });
+  const semanticTopScore = semantic[0]?.score ?? 0;
+
+  const mergedScores = new Map<string, ScoredChunk>();
+  for (const item of ranked) {
+    mergedScores.set(item.id, item);
+  }
+  for (const item of semantic) {
+    if (!item.id.startsWith("chunk-")) {
+      continue;
+    }
+    const existing = mergedScores.get(item.id);
+    if (existing) {
+      existing.score += item.score * 4;
+      continue;
+    }
+    const idx = Number(item.id.replace("chunk-", ""));
+    const chunk = chunks[idx];
+    if (!chunk) {
+      continue;
+    }
+    mergedScores.set(item.id, {
+      id: item.id,
+      chunk,
+      overlap: findMentionedHeroes(chunk.fullText).length,
+      score: item.score * 4,
+    });
+  }
+  const mergedRanked = Array.from(mergedScores.values()).sort((a, b) => b.score - a.score).slice(0, 16);
+
+  const diverseTop = takeDiverseTop(mergedRanked, 4);
+  const confidence = retrievalConfidence(lexicalTopScore, semanticTopScore, mentionedHeroes);
+  let fallbackReason: string | undefined;
 
   // Hero-anchored fallback: ensure sections mentioning queried hero aliases are included.
   if (mentionedHeroes.length > 0) {
+    const aliasSet = new Set<string>();
+    for (const hero of mentionedHeroes) {
+      for (const alias of expandHeroAliases(hero)) {
+        aliasSet.add(alias);
+      }
+    }
     const heroAnchored = chunks
       .filter((chunk) => {
         const lower = chunk.fullText.toLowerCase();
-        return mentionedHeroes.some((hero) => lower.includes(hero));
+        for (const alias of aliasSet) {
+          if (lower.includes(alias)) {
+            return true;
+          }
+        }
+        return false;
       })
       .slice(0, 3)
       .map((chunk) => ({
+        id: `forced-${chunk.heading}`,
         chunk,
         overlap: mentionedHeroes.length,
         score: 100, // force include hero-matching context
@@ -782,25 +1238,55 @@ export async function searchStrategyTool(query: string): Promise<string[]> {
       }
     }
     if (deduped.length > 0) {
-      return deduped.map(({ chunk, overlap, score }) =>
-        `[${chunk.heading}] score=${score.toFixed(2)} overlap=${overlap}\n${trimSnippet(
-          chunk.body,
-          700,
-        )}`,
-      );
+      // Pull in direct hero table rows for compact "what style is X" prompts.
+      const heroRowsMatched = heroRows
+        .filter((row) => mentionedHeroes.includes(row.hero))
+        .slice(0, 2)
+        .map((row) => `[Hero index] ${row.hero} | role=${row.role} | style=${row.styleTags}\n${row.summary}`);
+      return {
+        snippets: [...heroRowsMatched, ...deduped.map(formatScoredSnippet)].slice(0, 5),
+        diagnostics: {
+          normalizedQuery,
+          expandedQuery: retrievalQuery,
+          heroes: mentionedHeroes,
+          lexicalTopScore,
+          semanticTopScore,
+          confidence,
+          source: "local_guide",
+        },
+      };
     }
+    fallbackReason = "hero_mentioned_but_no_anchor";
   }
 
   if (diverseTop.length > 0) {
-    return diverseTop.map(({ chunk, overlap, score }) =>
-      `[${chunk.heading}] score=${score.toFixed(2)} overlap=${overlap}\n${trimSnippet(
-        chunk.body,
-        700,
-      )}`,
-    );
+    return {
+      snippets: diverseTop.map(formatScoredSnippet),
+      diagnostics: {
+        normalizedQuery,
+        expandedQuery: retrievalQuery,
+        heroes: mentionedHeroes,
+        lexicalTopScore,
+        semanticTopScore,
+        confidence,
+        source: "local_guide",
+      },
+    };
   }
 
-  return chunks.slice(0, 2).map((chunk) => `[${chunk.heading}]\n${trimSnippet(chunk.body, 700)}`);
+  return {
+    snippets: [],
+    diagnostics: {
+      normalizedQuery,
+      expandedQuery: retrievalQuery,
+      heroes: mentionedHeroes,
+      lexicalTopScore,
+      semanticTopScore,
+      confidence,
+      source: "local_guide",
+      fallbackReason: fallbackReason || "lexical_empty",
+    },
+  };
 }
 
 export async function callFutureApiTool(_query: string): Promise<{ ok: boolean; result: string }> {
@@ -808,6 +1294,26 @@ export async function callFutureApiTool(_query: string): Promise<{ ok: boolean; 
   return {
     ok: false,
     result: "TODO: external API tool not implemented yet.",
+  };
+}
+
+async function callHeroAbilityTool(query: string): Promise<{ ok: boolean; tool: HeroAbilityToolName; result: string }> {
+  const intent = resolveHeroAbilityToolIntent(query);
+  const scopedQuery = intent.subject
+    ? `${intent.tool} for "${intent.subject}": ${query}`
+    : `${intent.tool}: ${query}`;
+  const external = await externalContextLookup(scopedQuery);
+  if (external.snippets.length === 0) {
+    return {
+      ok: false,
+      tool: intent.tool,
+      result: `No ${intent.tool} context returned (${external.detail}).`,
+    };
+  }
+  return {
+    ok: true,
+    tool: intent.tool,
+    result: `[SOURCE: ${external.source}] ${external.snippets.join("\n")}`,
   };
 }
 
@@ -830,7 +1336,7 @@ async function callOpenAIResponse(prompt: string): Promise<string | null> {
         {
           role: "system",
           content:
-            "You are a Marvel Rivals strategy agent. You must answer using only facts present in the provided STRATEGY CONTEXT snippets and DERIVED RELATIONS / KNOWLEDGE GRAPH links. Do not use outside knowledge. If the answer is not supported by that context, respond with: 'I don't have enough support in the provided strategy guide context to answer that.' For relationship questions, structure reasoning explicitly as 'A -> relation -> B' and tie each relation to context support.",
+            "You are a Marvel Rivals strategy agent. Treat provided tool context as your only factual source. Tool policy: hero-general and hero-ability questions should prefer HERO ABILITY TOOL CONTEXT or EXTERNAL SOURCE context; composition/map/relationship questions should prefer STRATEGY CONTEXT and DERIVED RELATIONS. If one source is empty, continue with other provided sources. If all sources are empty or unsupported, respond exactly: 'I don't have enough support in the available context sources to answer that.' For relationship questions, structure reasoning as 'A -> relation -> B' and tie each relation to context evidence.",
         },
         {
           role: "user",
@@ -865,18 +1371,65 @@ export async function runAgent(input: {
   const intent = detectIntent(input.userInput, Boolean(input.image));
   const tools: ToolUsage[] = [];
   const context: string[] = [];
-  const shouldRunStrategy = intent === "strategy_question" || input.userInput.trim().length > 0;
+  const shouldRunStrategy = input.userInput.trim().length > 0;
   const shouldRunRelationshipReasoning = intent === "relationship_question";
   const shouldRunExternalApi = intent === "external_api_lookup";
+  const searchPlan = buildSearchPlan(intent, input.userInput);
 
-  // Run independent tool calls concurrently to reduce end-to-end latency.
+  // Run image analysis in parallel; text source retrieval follows a plan with fallback chaining.
   const yoloTask = input.image ? runYoloTool(input.image, input.layoutPreset) : Promise.resolve(null);
-  const strategyTask = shouldRunStrategy ? searchStrategyTool(input.userInput) : Promise.resolve(null);
-  const externalApiTask = shouldRunExternalApi
-    ? callFutureApiTool(input.userInput)
-    : Promise.resolve(null);
+  const yolo = await yoloTask;
+  let snippets: string[] = [];
+  let retrievalDiagnostics: StrategyRetrievalDiagnostics | null = null;
+  let heroAbilityResult: { ok: boolean; tool: HeroAbilityToolName; result: string } | null = null;
+  let externalResult: { source: string; snippets: string[]; detail: string } | null = null;
 
-  const [yolo, snippets, apiResult] = await Promise.all([yoloTask, strategyTask, externalApiTask]);
+  for (const source of searchPlan) {
+    if (source === "strategy_rag" && shouldRunStrategy) {
+      const strategyResult = await searchStrategyTool(input.userInput);
+      retrievalDiagnostics = strategyResult.diagnostics;
+      tools.push({
+        tool: "searchStrategyTool",
+        ok: strategyResult.snippets.length > 0,
+        details: `Retrieved ${strategyResult.snippets.length} strategy snippets. confidence=${strategyResult.diagnostics.confidence.toFixed(2)}`,
+      });
+      if (strategyResult.snippets.length > 0) {
+        snippets = strategyResult.snippets;
+        break;
+      }
+      continue;
+    }
+
+    if (source === "hero_ability_tool") {
+      const result = await callHeroAbilityTool(input.userInput);
+      heroAbilityResult = result;
+      tools.push({
+        tool: result.tool,
+        ok: result.ok,
+        details: result.result,
+      });
+      if (result.ok) {
+        break;
+      }
+      continue;
+    }
+
+    if (source === "external_web") {
+      const ext = await externalContextLookup(input.userInput);
+      externalResult = ext;
+      tools.push({
+        tool: "externalContextLookup",
+        ok: ext.snippets.length > 0,
+        details: `[SOURCE: ${ext.source}] ${ext.detail}`,
+      });
+      if (ext.snippets.length > 0) {
+        snippets = [...snippets, ...ext.snippets].slice(0, 6);
+        break;
+      }
+    }
+  }
+
+  const apiResult = shouldRunExternalApi ? await callFutureApiTool(input.userInput) : null;
 
   if (yolo) {
     tools.push({
@@ -904,13 +1457,20 @@ export async function runAgent(input: {
     );
   }
 
-  if (snippets) {
+  if (retrievalDiagnostics) {
+    context.push(
+      `RETRIEVAL DIAGNOSTICS:\nquery=${retrievalDiagnostics.normalizedQuery}\nexpanded=${retrievalDiagnostics.expandedQuery}\nheroes=${retrievalDiagnostics.heroes.join(", ") || "(none)"}\nlexical_top=${retrievalDiagnostics.lexicalTopScore.toFixed(3)}\nsemantic_top=${retrievalDiagnostics.semanticTopScore.toFixed(3)}\nconfidence=${retrievalDiagnostics.confidence.toFixed(3)}\nsource=${retrievalDiagnostics.source}${retrievalDiagnostics.fallbackReason ? `\nfallback_reason=${retrievalDiagnostics.fallbackReason}` : ""}`,
+    );
+  }
+
+  if (externalResult) {
+    context.push(
+      `EXTERNAL SOURCE: ${externalResult.source}\n${externalResult.detail}\n${externalResult.snippets.join("\n")}`,
+    );
+  }
+
+  if (snippets.length > 0) {
     const relations = deriveEntityRelations(snippets);
-    tools.push({
-      tool: "searchStrategyTool",
-      ok: snippets.length > 0,
-      details: `Retrieved ${snippets.length} strategy snippets.`,
-    });
     context.push(`STRATEGY CONTEXT:\n${snippets.map((s, i) => `[${i + 1}] ${s}`).join("\n\n")}`);
     if (relations.length > 0) {
       context.push(`DERIVED RELATIONS:\n${relations.map((r, i) => `[R${i + 1}] ${r}`).join("\n")}`);
@@ -931,32 +1491,43 @@ export async function runAgent(input: {
     context.push(`External API tool: ${apiResult.result}`);
   }
 
+  if (heroAbilityResult?.ok) {
+    context.push(`HERO ABILITY TOOL CONTEXT (${heroAbilityResult.tool}):\n${heroAbilityResult.result}`);
+  }
+
   const prompt = [
     `User intent: ${intent}`,
     `User input: ${input.userInput || "(empty)"}`,
-    "Use only STRATEGY CONTEXT and DERIVED RELATIONS for factual claims.",
+    "Use only provided tool context (STRATEGY CONTEXT, DERIVED RELATIONS, HERO ABILITY TOOL CONTEXT, EXTERNAL SOURCE) for factual claims.",
     "Tool context:",
     context.join("\n\n"),
   ]
     .filter(Boolean)
     .join("\n\n");
 
-  const hasStrategyContext = context.some((entry) => entry.startsWith("STRATEGY CONTEXT:"));
-  if (!hasStrategyContext) {
+  const hasKnowledgeContext =
+    context.some((entry) => entry.startsWith("STRATEGY CONTEXT:")) ||
+    context.some((entry) => entry.startsWith("HERO ABILITY TOOL CONTEXT")) ||
+    context.some((entry) => entry.startsWith("EXTERNAL SOURCE:"));
+  if (!hasKnowledgeContext) {
+    const unsupported =
+      "I don't have enough support in the available context sources to answer that.";
     return {
       intent,
       tools,
       context,
-      response: "I don't have enough support in the provided strategy guide context to answer that.",
+      response: prependDetectionToResponse(input.image, yolo, unsupported),
+      imageContext: yolo?.imageContext ?? input.previousImageContext ?? undefined,
     };
   }
 
   const llm = await callOpenAIResponse(prompt);
+  const mainBody = llm || fallbackResponse(input.userInput, context);
   return {
     intent,
     tools,
     context,
-    response: llm || fallbackResponse(input.userInput, context),
+    response: prependDetectionToResponse(input.image, yolo, mainBody),
     imageContext: yolo?.imageContext ?? input.previousImageContext ?? undefined,
   };
 }
