@@ -1,108 +1,97 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+function base64PngToFile(base64: string, filename: string): File {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) {
+    bytes[i] = bin.charCodeAt(i);
+  }
+  return new File([bytes], filename, { type: "image/png" });
+}
 
 export default function Home() {
-  const [droppedImages, setDroppedImages] = useState<File[]>([]);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [aiText, setAiText] = useState<string | null>(null);
-  const [inferStatus, setInferStatus] = useState<"idle" | "loading" | "error">("idle");
-  const [inferError, setInferError] = useState<string | null>(null);
+  const [userInput, setUserInput] = useState("");
+  const [agentText, setAgentText] = useState<string | null>(null);
+  const [toolTrace, setToolTrace] = useState<string | null>(null);
+  const [agentStatus, setAgentStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [agentError, setAgentError] = useState<string | null>(null);
   const [layoutPreset, setLayoutPreset] = useState<string>("");
+  const [hasElectronIpc, setHasElectronIpc] = useState(false);
 
-  const imageListText = useMemo(() => {
-    if (droppedImages.length === 0) {
-      return "Drop images here to attach them.";
+  const imageLabelText = useMemo(() => {
+    if (!selectedImage) {
+      return "Drop an image here to attach it.";
     }
+    return selectedImage.name;
+  }, [selectedImage]);
 
-    return droppedImages.map((file) => file.name).join(", ");
-  }, [droppedImages]);
-
-  const runInference = useCallback(async (files: File[]) => {
-    if (files.length === 0) return;
-    const file = files[0];
-    setInferStatus("loading");
-    setInferError(null);
-    setAiText(null);
+  const submitAgent = useCallback(async (imageOverride?: File | null) => {
+    const imageToUse = imageOverride ?? selectedImage;
+    if (!userInput.trim() && !imageToUse) {
+      setAgentStatus("error");
+      setAgentError("Enter text and/or attach an image.");
+      return;
+    }
+    setAgentStatus("loading");
+    setAgentError(null);
+    setAgentText(null);
+    setToolTrace(null);
     try {
       const body = new FormData();
-      body.append("image", file);
+      body.append("input", userInput);
+      if (imageToUse) {
+        body.append("image", imageToUse);
+      }
       if (layoutPreset.trim()) {
         body.append("layout", layoutPreset.trim());
       }
-      const res = await fetch("/api/infer", { method: "POST", body });
+      const res = await fetch("/api/agent", { method: "POST", body });
       const data = (await res.json()) as {
         ok?: boolean;
-        summary?: string;
         error?: string;
-        stderr?: string;
-        prediction_classes?: string[];
-        prediction_teams?: {
-          note?: string;
-          image_width_px?: number;
-          split_x_px?: number;
-          your_team_blue_left?: unknown[];
-          enemy_team_right?: unknown[];
-        } | null;
-        payload?: unknown;
+        response?: string;
+        intent?: string;
+        tools?: Array<{ tool: string; ok: boolean; details?: string }>;
       };
       if (!res.ok || !data.ok) {
-        setInferStatus("error");
-        setInferError(data.error ?? `Request failed (${res.status})`);
+        setAgentStatus("error");
+        setAgentError(data.error ?? `Request failed (${res.status})`);
         return;
       }
-      const classes = Array.isArray(data.prediction_classes) ? data.prediction_classes : [];
-      const teams = data.prediction_teams;
-      const yourTeam = Array.isArray(teams?.your_team_blue_left) ? teams!.your_team_blue_left : [];
-      const enemyTeam = Array.isArray(teams?.enemy_team_right) ? teams!.enemy_team_right : [];
-
-      console.log("[infer] YOUR TEAM (blue, left column) — top→bottom:", yourTeam);
-      console.log("[infer] ENEMY TEAM (right column) — top→bottom:", enemyTeam);
-      console.log("[infer] prediction_classes (your rows, then enemy):", classes);
-
-      const summary = data.summary?.trim() ?? "";
-      const pretty =
-        data.payload !== undefined && data.payload !== null
-          ? JSON.stringify(data.payload, null, 2)
-          : "";
-
-      const teamMeta =
-        teams && typeof teams.image_width_px === "number" && typeof teams.split_x_px === "number"
-          ? `Split at x=${teams.split_x_px}px (image width ${teams.image_width_px}px). ${teams.note ?? ""}`
-          : teams?.note ?? "";
-
-      const yourBlock =
-        yourTeam.length > 0
-          ? `YOUR TEAM (blue, left)\n${JSON.stringify(yourTeam, null, 2)}`
-          : "YOUR TEAM (blue, left): (no detections with x/y on this side)";
-      const enemyBlock =
-        enemyTeam.length > 0
-          ? `ENEMY TEAM (right)\n${JSON.stringify(enemyTeam, null, 2)}`
-          : "ENEMY TEAM (right): (no detections with x/y on this side)";
-
-      const classesBlock =
-        classes.length > 0
-          ? `All class names (your team rows, then enemy rows):\n${JSON.stringify(classes, null, 2)}`
-          : "All class names: []";
-
-      const teamsSection =
-        teams !== undefined && teams !== null
-          ? [teamMeta && `--- Team split ---\n${teamMeta}`, yourBlock, enemyBlock, classesBlock]
-              .filter(Boolean)
-              .join("\n\n")
-          : classesBlock;
-
-      setAiText(
-        [teamsSection, summary, pretty ? `\n--- Full payload JSON ---\n${pretty}` : ""]
-          .filter(Boolean)
-          .join("\n\n"),
-      );
-      setInferStatus("idle");
+      setAgentText(data.response ?? "(No response)");
+      const trace = [
+        `Intent: ${data.intent ?? "unknown"}`,
+        ...(Array.isArray(data.tools)
+          ? data.tools.map((t) => `- ${t.tool}: ${t.ok ? "ok" : "failed"}${t.details ? ` (${t.details})` : ""}`)
+          : []),
+      ].join("\n");
+      setToolTrace(trace);
+      setAgentStatus("idle");
     } catch (e) {
-      setInferStatus("error");
-      setInferError(e instanceof Error ? e.message : "Inference request failed");
+      setAgentStatus("error");
+      setAgentError(e instanceof Error ? e.message : "Agent request failed");
     }
-  }, [layoutPreset]);
+  }, [layoutPreset, selectedImage, userInput]);
+
+  useEffect(() => {
+    setHasElectronIpc(Boolean(window.ipc));
+  }, []);
+
+  useEffect(() => {
+    const off = window.ipc?.onUnderlayScreenshot?.((base64) => {
+      const name = `underlay-${Date.now()}.png`;
+      const file = base64PngToFile(base64, name);
+      setSelectedImage(file);
+      void submitAgent(file);
+    });
+    return () => {
+      off?.();
+    };
+  }, [submitAgent]);
 
   const handleDragOver: React.DragEventHandler<HTMLLabelElement> = (event) => {
     event.preventDefault();
@@ -120,8 +109,7 @@ export default function Home() {
       file.type.startsWith("image/"),
     );
     if (files.length > 0) {
-      setDroppedImages(files);
-      void runInference(files);
+      setSelectedImage(files[0]);
     }
   };
 
@@ -132,9 +120,13 @@ export default function Home() {
       file.type.startsWith("image/"),
     );
     if (files.length > 0) {
-      setDroppedImages(files);
-      void runInference(files);
+      setSelectedImage(files[0]);
     }
+  };
+
+  const submitFromForm: React.FormEventHandler<HTMLFormElement> = (event) => {
+    event.preventDefault();
+    void submitAgent();
   };
 
   return (
@@ -153,38 +145,58 @@ export default function Home() {
           </h1>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <form className="flex-1 overflow-y-auto p-4 space-y-3" onSubmit={submitFromForm}>
+          <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 mb-2">
+              Prompt
+            </p>
+            <textarea
+              value={userInput}
+              onChange={(event) => setUserInput(event.target.value)}
+              placeholder="Ask a strategy question, request advice, or send text + image together."
+              className="w-full min-h-[90px] resize-y rounded-md border border-white/[0.10] bg-black/30 px-2 py-2 text-[11px] text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-sky-400/60"
+            />
+            <button
+              type="submit"
+              disabled={agentStatus === "loading"}
+              className="mt-2 w-full rounded-md border border-blue-300/60 bg-blue-500/15 px-3 py-1.5 text-[11px] font-semibold tracking-wide text-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {agentStatus === "loading" ? "Agent Running..." : "Run Agent"}
+            </button>
+          </div>
+
           <div className="h-full min-h-[120px] rounded-xl border border-white/[0.06] bg-black/20 p-3">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 mb-2">
               AI response
             </p>
-            {inferStatus === "loading" && (
+            {agentStatus === "loading" && (
               <p className="text-[12px] leading-relaxed text-sky-300/90 font-mono animate-pulse">
-                Extracting avatar regions (OpenCV layout)…
+                Agent is reasoning with tool calls...
               </p>
             )}
-            {inferStatus === "error" && inferError && (
+            {agentStatus === "error" && agentError && (
               <p className="text-[12px] leading-relaxed text-red-300/90 font-mono whitespace-pre-wrap">
-                {inferError}
+                {agentError}
               </p>
             )}
-            {inferStatus !== "loading" && aiText && (
+            {agentStatus !== "loading" && agentText && (
               <pre className="text-[11px] leading-relaxed text-zinc-200 font-mono whitespace-pre-wrap break-words">
-                {aiText}
+                {agentText}
               </pre>
             )}
-            {inferStatus !== "loading" && !aiText && !inferError && (
+            {agentStatus !== "loading" && toolTrace && (
+              <pre className="mt-3 text-[10px] leading-relaxed text-zinc-400 font-mono whitespace-pre-wrap break-words border-t border-white/[0.06] pt-3">
+                {toolTrace}
+              </pre>
+            )}
+            {agentStatus !== "loading" && !agentText && !agentError && (
               <p className="text-[12px] leading-relaxed text-zinc-500 font-mono">
-                Drop a screenshot to extract icon boxes. Default layout:{" "}
-                <span className="text-zinc-400">config/scoreboard_layout.json</span> (12-row
-                post-match). Split-screen vs match:{" "}
-                <span className="text-zinc-400">config/layouts/ingame_split_teams_1024.json</span>.
-                Other presets: team panel, character select bar (form field{" "}
-                <span className="text-zinc-400">layout</span>).
+                Ask a question, attach a screenshot, or do both. The agent decides when to run
+                the YOLO tool and when to search your strategy guide markdown.
               </p>
             )}
           </div>
-        </div>
+        </form>
 
         <div className="p-3 border-t border-white/[0.06] space-y-2">
           <div className="px-1">
@@ -225,11 +237,16 @@ export default function Home() {
               className="hidden"
             />
             <p className="text-[11px] font-semibold tracking-wide text-zinc-200">
-              Drag &amp; Drop Images
+              Drag &amp; Drop Image
             </p>
             <p className="mt-1 text-[10px] text-zinc-400 break-words">
-              {imageListText}
+              {imageLabelText}
             </p>
+            {hasElectronIpc && (
+              <p className="mt-2 text-[9px] text-zinc-500 leading-snug">
+                Hotkey: ⌘⇧G (mac) or Ctrl+Shift+G captures underlay and runs the agent.
+              </p>
+            )}
           </label>
         </div>
       </aside>
