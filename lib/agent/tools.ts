@@ -90,12 +90,40 @@ function isGeneralHeroQuestion(input: string): boolean {
   return !isRelationshipQuestion(normalized) && !isCompositionOrMapQuestion(normalized);
 }
 
+function isAbilityListingQuestion(input: string): boolean {
+  return /(list|show|what are|give me)\s+.*(abilities|ability|skills|kit|cooldowns?)/.test(input);
+}
+
+function isSpecificQuestion(input: string): boolean {
+  const normalized = normalizeQueryText(input);
+  const hasHero = findMentionedHeroes(normalized).length > 0;
+  const hasSpecificSignals =
+    /\b(counter|synergy|works with|against|map|maps|lineup|comp|team[- ]?up|ability|abilities|cooldown|role|playstyle)\b/.test(
+      normalized,
+    ) || /\b(what|which|who|when|where|how)\b/.test(normalized);
+  return hasHero || hasSpecificSignals;
+}
+
 function buildSearchPlan(intent: Intent, userInput: string): SearchSource[] {
   const normalized = userInput.toLowerCase();
   const plan: SearchSource[] = [];
+  const specific = isSpecificQuestion(normalized);
+  const abilityListing = isAbilityListingQuestion(normalized);
+
+  if (abilityListing) {
+    // For explicit "list abilities" requests, hit the ability MCP-style tool first.
+    plan.push("hero_ability_tool", "strategy_rag", "external_web");
+    return Array.from(new Set(plan));
+  }
+
+  if (specific) {
+    // Specific questions should prefer local RAG, then web fallback.
+    plan.push("strategy_rag", "external_web", "hero_ability_tool");
+    return Array.from(new Set(plan));
+  }
 
   if (intent === "hero_data_lookup" || isGeneralHeroQuestion(normalized)) {
-    plan.push("hero_ability_tool", "external_web", "strategy_rag");
+    plan.push("strategy_rag", "external_web", "hero_ability_tool");
   } else if (intent === "relationship_question" || isCompositionOrMapQuestion(normalized)) {
     plan.push("strategy_rag", "hero_ability_tool", "external_web");
   } else if (intent === "external_api_lookup") {
