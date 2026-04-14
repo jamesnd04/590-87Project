@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 function base64PngToFile(base64: string, filename: string): File {
   const bin = atob(base64);
@@ -12,6 +12,8 @@ function base64PngToFile(base64: string, filename: string): File {
 }
 
 export default function Home() {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioObjectUrlRef = useRef<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [userInput, setUserInput] = useState("");
@@ -19,8 +21,13 @@ export default function Home() {
   const [toolTrace, setToolTrace] = useState<string | null>(null);
   const [agentStatus, setAgentStatus] = useState<"idle" | "loading" | "error">("idle");
   const [agentError, setAgentError] = useState<string | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [layoutPreset, setLayoutPreset] = useState<string>("");
   const [hasElectronIpc, setHasElectronIpc] = useState(false);
+  const [teamContext, setTeamContext] = useState<{
+    yourTeam: string[];
+    enemyTeam: string[];
+  } | null>(null);
 
   const imageLabelText = useMemo(() => {
     if (!selectedImage) {
@@ -49,6 +56,9 @@ export default function Home() {
       if (layoutPreset.trim()) {
         body.append("layout", layoutPreset.trim());
       }
+      if (teamContext) {
+        body.append("team_context", JSON.stringify(teamContext));
+      }
       const res = await fetch("/api/agent", { method: "POST", body });
       const data = (await res.json()) as {
         ok?: boolean;
@@ -56,6 +66,7 @@ export default function Home() {
         response?: string;
         intent?: string;
         tools?: Array<{ tool: string; ok: boolean; details?: string }>;
+        imageContext?: { yourTeam?: string[]; enemyTeam?: string[] };
       };
       if (!res.ok || !data.ok) {
         setAgentStatus("error");
@@ -63,6 +74,12 @@ export default function Home() {
         return;
       }
       setAgentText(data.response ?? "(No response)");
+      if (data.imageContext) {
+        setTeamContext({
+          yourTeam: Array.isArray(data.imageContext.yourTeam) ? data.imageContext.yourTeam : [],
+          enemyTeam: Array.isArray(data.imageContext.enemyTeam) ? data.imageContext.enemyTeam : [],
+        });
+      }
       const trace = [
         `Intent: ${data.intent ?? "unknown"}`,
         ...(Array.isArray(data.tools)
@@ -75,7 +92,7 @@ export default function Home() {
       setAgentStatus("error");
       setAgentError(e instanceof Error ? e.message : "Agent request failed");
     }
-  }, [layoutPreset, selectedImage, userInput]);
+  }, [layoutPreset, selectedImage, teamContext, userInput]);
 
   useEffect(() => {
     setHasElectronIpc(Boolean(window.ipc));
@@ -129,6 +146,52 @@ export default function Home() {
     void submitAgent();
   };
 
+  const handleSpeak = useCallback(() => {
+    if (!agentText) {
+      return;
+    }
+    if (isSpeaking) {
+      audioRef.current?.pause();
+      audioRef.current = null;
+      if (audioObjectUrlRef.current) {
+        URL.revokeObjectURL(audioObjectUrlRef.current);
+        audioObjectUrlRef.current = null;
+      }
+      setIsSpeaking(false);
+      return;
+    }
+    void (async () => {
+      try {
+        const body = new FormData();
+        body.append("text", agentText);
+        const response = await fetch("/api/speak", { method: "POST", body });
+        if (!response.ok) {
+          const err = (await response.json()) as { error?: string };
+          throw new Error(err.error || "TTS request failed.");
+        }
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        audioObjectUrlRef.current = objectUrl;
+        const audio = new Audio(objectUrl);
+        audioRef.current = audio;
+        audio.onended = () => {
+          setIsSpeaking(false);
+          if (audioObjectUrlRef.current) {
+            URL.revokeObjectURL(audioObjectUrlRef.current);
+            audioObjectUrlRef.current = null;
+          }
+          audioRef.current = null;
+        };
+        setIsSpeaking(true);
+        await audio.play();
+      } catch (error) {
+        setIsSpeaking(false);
+        setAgentStatus("error");
+        setAgentError(error instanceof Error ? error.message : "OpenAI TTS playback failed.");
+      }
+    })();
+  }, [agentText, isSpeaking]);
+
   return (
     <div className="h-full w-full flex justify-end bg-transparent">
       <aside
@@ -156,6 +219,28 @@ export default function Home() {
               placeholder="Ask a strategy question, request advice, or send text + image together."
               className="w-full min-h-[90px] resize-y rounded-md border border-white/[0.10] bg-black/30 px-2 py-2 text-[11px] text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-sky-400/60"
             />
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSpeak}
+                disabled={!agentText}
+                className="rounded-md border border-white/[0.12] bg-black/40 px-2 py-1 text-[11px] text-zinc-200 disabled:opacity-50"
+                title="Read response aloud using OpenAI TTS"
+              >
+                {isSpeaking ? "🔈 Stop" : "🔊 Read aloud"}
+              </button>
+            </div>
+            {teamContext && (
+              <div className="mt-2 rounded-md border border-blue-300/30 bg-blue-500/10 p-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-200">
+                  Image + Prompt Context Linked
+                </p>
+                <p className="text-[10px] text-zinc-300 mt-1">
+                  Your team: {teamContext.yourTeam.join(", ") || "(unknown)"}{" "}
+                  | Enemy team: {teamContext.enemyTeam.join(", ") || "(unknown)"}
+                </p>
+              </div>
+            )}
             <button
               type="submit"
               disabled={agentStatus === "loading"}
@@ -241,6 +326,9 @@ export default function Home() {
             </p>
             <p className="mt-1 text-[10px] text-zinc-400 break-words">
               {imageLabelText}
+            </p>
+            <p className="mt-1 text-[9px] text-blue-200/80">
+              Upload + ask in one flow: detected teams are carried into your next question.
             </p>
             {hasElectronIpc && (
               <p className="mt-2 text-[9px] text-zinc-500 leading-snug">

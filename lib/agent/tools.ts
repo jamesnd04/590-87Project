@@ -7,8 +7,14 @@ const STRATEGY_PATHS = [
   path.join(process.cwd(), "marvel_rivals_strategy.md"),
   path.join(process.cwd(), "marvel_rivals_strategy_guide.md"),
 ];
+let strategyVocabularyCache: Set<string> | null = null;
 
-type Intent = "image_analysis" | "strategy_question" | "external_api_lookup" | "general_chat";
+type Intent =
+  | "image_analysis"
+  | "strategy_question"
+  | "relationship_question"
+  | "external_api_lookup"
+  | "general_chat";
 
 export type ToolUsage = {
   tool: string;
@@ -21,6 +27,13 @@ export type AgentResult = {
   tools: ToolUsage[];
   response: string;
   context: string[];
+  imageContext?: ImageContext;
+};
+
+export type ImageContext = {
+  yourTeam: string[];
+  enemyTeam: string[];
+  source: "image_upload" | "carried_context";
 };
 
 type YoloResult = {
@@ -29,6 +42,7 @@ type YoloResult = {
   summary: string;
   raw?: Record<string, unknown>;
   error?: string;
+  imageContext?: ImageContext;
 };
 
 function detectIntent(input: string, hasImage: boolean): Intent {
@@ -36,6 +50,9 @@ function detectIntent(input: string, hasImage: boolean): Intent {
     return "image_analysis";
   }
   const normalized = input.toLowerCase();
+  if (isRelationshipQuestion(normalized)) {
+    return "relationship_question";
+  }
   if (/(api|endpoint|external|live data|fetch data|stats)/.test(normalized)) {
     return "external_api_lookup";
   }
@@ -113,6 +130,23 @@ function parseYoloClasses(raw: Record<string, unknown>): string[] {
   return [];
 }
 
+function splitTeamClasses(predictionClasses: string[]): ImageContext {
+  const clean = predictionClasses.map((name) => name.trim()).filter(Boolean);
+  if (clean.length === 0) {
+    return {
+      yourTeam: [],
+      enemyTeam: [],
+      source: "image_upload",
+    };
+  }
+  const mid = Math.ceil(clean.length / 2);
+  return {
+    yourTeam: clean.slice(0, mid),
+    enemyTeam: clean.slice(mid),
+    source: "image_upload",
+  };
+}
+
 export async function runYoloTool(image: Blob, layoutPreset: string): Promise<YoloResult> {
   const tmpRoot = path.join(process.cwd(), ".tmp-infer");
   await mkdir(tmpRoot, { recursive: true });
@@ -143,11 +177,13 @@ export async function runYoloTool(image: Blob, layoutPreset: string): Promise<Yo
     }
 
     const parsed = JSON.parse(line) as Record<string, unknown>;
+    const predictionClasses = parseYoloClasses(parsed);
     return {
       ok: true,
-      predictionClasses: parseYoloClasses(parsed),
+      predictionClasses,
       summary: typeof parsed.summary === "string" ? parsed.summary : "YOLO completed.",
       raw: parsed,
+      imageContext: splitTeamClasses(predictionClasses),
     };
   } catch (error) {
     return {
@@ -177,6 +213,57 @@ type ScoredChunk = {
   score: number;
   overlap: number;
 };
+
+const HERO_NAMES = [
+  "magneto",
+  "doctor strange",
+  "hulk",
+  "venom",
+  "captain america",
+  "groot",
+  "thor",
+  "emma frost",
+  "the thing",
+  "angela",
+  "peni parker",
+  "deadpool",
+  "hela",
+  "punisher",
+  "hawkeye",
+  "namor",
+  "winter soldier",
+  "spider-man",
+  "iron fist",
+  "magik",
+  "black panther",
+  "psylocke",
+  "iron man",
+  "human torch",
+  "storm",
+  "scarlet witch",
+  "star-lord",
+  "moon knight",
+  "wolverine",
+  "blade",
+  "black widow",
+  "squirrel girl",
+  "phoenix",
+  "gambit",
+  "rogue",
+  "daredevil",
+  "elsa bloodstone",
+  "mister fantastic",
+  "luna snow",
+  "mantis",
+  "rocket raccoon",
+  "loki",
+  "jeff the land shark",
+  "cloak & dagger",
+  "adam warlock",
+  "invisible woman",
+  "ultron",
+  "white fox",
+];
 
 const STOP_WORDS = new Set([
   "the",
@@ -216,6 +303,86 @@ const STOP_WORDS = new Set([
   "which",
   "who",
 ]);
+
+const MARVEL_DOMAIN_KEYWORDS = [
+  "marvel rivals",
+  "vanguard",
+  "duelist",
+  "strategist",
+  "team-up",
+  "team up",
+  "dive",
+  "poke",
+  "brawl",
+  "domination",
+  "convergence",
+  "convoy",
+];
+
+const HERO_ALIASES: Record<string, string> = {
+  majik: "magik",
+  spiderman: "spider-man",
+  starlord: "star-lord",
+  jeff: "jeff the land shark",
+  cloak: "cloak & dagger",
+  dagger: "cloak & dagger",
+};
+
+function isRelationshipQuestion(input: string): boolean {
+  return /(counter|synerg|works? with|play with|pair|pairing|relation|team[- ]?up|good with|bad against|who fits with)/.test(
+    input,
+  );
+}
+
+function isMarvelRivalsRelated(input: string): boolean {
+  if (!input.trim()) {
+    return false;
+  }
+  if (MARVEL_DOMAIN_KEYWORDS.some((keyword) => input.includes(keyword))) {
+    return true;
+  }
+  const normalized = input
+    .split(/[^a-z0-9-]+/g)
+    .filter(Boolean)
+    .map((token) => HERO_ALIASES[token] || token);
+  const normalizedInput = normalized.join(" ");
+
+  if (HERO_NAMES.some((hero) => normalizedInput.includes(hero))) {
+    return true;
+  }
+  if (strategyVocabularyCache && normalized.some((token) => strategyVocabularyCache?.has(token))) {
+    return true;
+  }
+  return false;
+}
+
+async function ensureStrategyVocabulary(): Promise<void> {
+  if (strategyVocabularyCache) {
+    return;
+  }
+  const strategyPath = STRATEGY_PATHS.find((candidate) => existsSync(candidate));
+  if (!strategyPath) {
+    return;
+  }
+  const content = await readFile(strategyPath, "utf-8");
+  strategyVocabularyCache = new Set(tokenize(content).filter((token) => token.length > 3));
+}
+
+function normalizeQueryText(input: string): string {
+  const pieces = input
+    .toLowerCase()
+    .split(/(\s+|[^a-z0-9-]+)/g)
+    .filter((part) => part.length > 0);
+  return pieces
+    .map((part) => {
+      const trimmed = part.trim();
+      if (!trimmed || /\s+/.test(part) || /[^a-z0-9-]/.test(part)) {
+        return part;
+      }
+      return HERO_ALIASES[trimmed] || trimmed;
+    })
+    .join("");
+}
 
 function tokenize(text: string): string[] {
   return text
@@ -300,8 +467,15 @@ function scoreChunk(chunk: StrategyChunk, query: string, queryTokens: string[]):
     query.trim().length > 5 && chunk.fullText.toLowerCase().includes(query.trim().toLowerCase())
       ? 2.2
       : 0;
+  const relationQuery = isRelationshipQuestion(query.toLowerCase());
+  const relationSignal = /(counter|synerg|works? with|pair|team[- ]?up|anti-dive|anti-poke|anti-brawl)/.test(
+    chunk.fullText.toLowerCase(),
+  );
+  const relationBoost = relationQuery && relationSignal ? 2.0 : 0;
+  const multiHeroBoost =
+    relationQuery && findMentionedHeroes(chunk.fullText).length >= 2 ? 1.2 : 0;
   const density = overlap > 0 ? overlap / Math.max(6, chunk.tokens.length / 14) : 0;
-  const score = lexicalScore + headingBoost + phraseBoost + density;
+  const score = lexicalScore + headingBoost + phraseBoost + relationBoost + multiHeroBoost + density;
 
   return {
     chunk,
@@ -346,6 +520,215 @@ function trimSnippet(text: string, maxChars: number): string {
   return `${text.slice(0, maxChars).trimEnd()}...`;
 }
 
+function findMentionedHeroes(text: string): string[] {
+  const lower = text.toLowerCase();
+  return HERO_NAMES.filter((hero) => lower.includes(hero));
+}
+
+type Archetype = "dive" | "poke" | "brawl" | "control" | "sustain" | "anti_dive" | "anti_poke" | "anti_brawl";
+type RelationType = "works_with" | "counters" | "enables";
+
+type HeroNode = {
+  name: string;
+  archetypes: Set<Archetype>;
+};
+
+type GraphEdge = {
+  from: string;
+  to: string;
+  relation: RelationType;
+  reason: string;
+};
+
+type KnowledgeGraph = {
+  nodes: Map<string, HeroNode>;
+  edges: GraphEdge[];
+};
+
+function ensureNode(graph: KnowledgeGraph, hero: string): HeroNode {
+  const existing = graph.nodes.get(hero);
+  if (existing) {
+    return existing;
+  }
+  const created: HeroNode = { name: hero, archetypes: new Set<Archetype>() };
+  graph.nodes.set(hero, created);
+  return created;
+}
+
+function addArchetypesFromText(node: HeroNode, text: string): void {
+  const lower = text.toLowerCase();
+  if (/(^|[^a-z])dive([^a-z]|$)|diver|dive comp/.test(lower)) node.archetypes.add("dive");
+  if (/(^|[^a-z])poke([^a-z]|$)|hitscan|sniper/.test(lower)) node.archetypes.add("poke");
+  if (/(^|[^a-z])brawl([^a-z]|$)|rush|deathball/.test(lower)) node.archetypes.add("brawl");
+  if (/(^|[^a-z])control([^a-z]|$)|area-control|area control/.test(lower)) node.archetypes.add("control");
+  if (/sustain|heal|healing|support/.test(lower)) node.archetypes.add("sustain");
+  if (/anti-dive|counter dive|counters dive|anti dive/.test(lower)) node.archetypes.add("anti_dive");
+  if (/anti-poke|counter poke|counters poke|anti poke/.test(lower)) node.archetypes.add("anti_poke");
+  if (/anti-brawl|counter brawl|counters brawl|anti brawl/.test(lower)) node.archetypes.add("anti_brawl");
+}
+
+function pushEdge(graph: KnowledgeGraph, edge: GraphEdge): void {
+  const exists = graph.edges.some(
+    (candidate) =>
+      candidate.from === edge.from &&
+      candidate.to === edge.to &&
+      candidate.relation === edge.relation &&
+      candidate.reason === edge.reason,
+  );
+  if (!exists) {
+    graph.edges.push(edge);
+  }
+}
+
+function buildKnowledgeGraph(snippets: string[]): KnowledgeGraph {
+  const graph: KnowledgeGraph = {
+    nodes: new Map<string, HeroNode>(),
+    edges: [],
+  };
+
+  for (const snippet of snippets) {
+    const lower = snippet.toLowerCase();
+    const heroes = findMentionedHeroes(snippet);
+    if (heroes.length === 0) {
+      continue;
+    }
+
+    for (const hero of heroes) {
+      const node = ensureNode(graph, hero);
+      addArchetypesFromText(node, lower);
+    }
+
+    // Explicit pair/counter statements from local snippet context.
+    if (/(countered by|counters?|hard counter)/.test(lower) && heroes.length >= 2) {
+      for (let i = 0; i < heroes.length - 1; i += 1) {
+        pushEdge(graph, {
+          from: heroes[i],
+          to: heroes[i + 1],
+          relation: "counters",
+          reason: "direct counter statement found in retrieved guide context",
+        });
+      }
+    }
+
+    // Hero chains written like "A + B + C" are usually synergy/core examples.
+    if (/\+/.test(lower) && heroes.length >= 2) {
+      for (let i = 0; i < heroes.length; i += 1) {
+        for (let j = i + 1; j < heroes.length; j += 1) {
+          pushEdge(graph, {
+            from: heroes[i],
+            to: heroes[j],
+            relation: "works_with",
+            reason: "listed together in a core/composition pattern",
+          });
+          pushEdge(graph, {
+            from: heroes[j],
+            to: heroes[i],
+            relation: "works_with",
+            reason: "listed together in a core/composition pattern",
+          });
+        }
+      }
+    }
+  }
+
+  // Derived graph edges from archetypes.
+  const nodes = Array.from(graph.nodes.values());
+  for (const a of nodes) {
+    for (const b of nodes) {
+      if (a.name === b.name) {
+        continue;
+      }
+      if (a.archetypes.has("anti_dive") && b.archetypes.has("dive")) {
+        pushEdge(graph, {
+          from: a.name,
+          to: b.name,
+          relation: "counters",
+          reason: "anti-dive relation inferred from archetypes",
+        });
+      }
+      if (a.archetypes.has("anti_poke") && b.archetypes.has("poke")) {
+        pushEdge(graph, {
+          from: a.name,
+          to: b.name,
+          relation: "counters",
+          reason: "anti-poke relation inferred from archetypes",
+        });
+      }
+      if (a.archetypes.has("anti_brawl") && b.archetypes.has("brawl")) {
+        pushEdge(graph, {
+          from: a.name,
+          to: b.name,
+          relation: "counters",
+          reason: "anti-brawl relation inferred from archetypes",
+        });
+      }
+      // Positive relation: same archetype heroes generally synergize.
+      const synergyArchetypes: Archetype[] = ["dive", "poke", "brawl", "control", "sustain"];
+      for (const tag of synergyArchetypes) {
+        if (a.archetypes.has(tag) && b.archetypes.has(tag)) {
+          pushEdge(graph, {
+            from: a.name,
+            to: b.name,
+            relation: "works_with",
+            reason: `both fit ${tag} archetype`,
+          });
+          break;
+        }
+      }
+      // Enabler relation for sustain supports helping aggressive archetypes.
+      if (a.archetypes.has("sustain") && (b.archetypes.has("dive") || b.archetypes.has("brawl"))) {
+        pushEdge(graph, {
+          from: a.name,
+          to: b.name,
+          relation: "enables",
+          reason: "sustain enables aggressive frontline uptime",
+        });
+      }
+    }
+  }
+
+  return graph;
+}
+
+function graphToRelationLines(graph: KnowledgeGraph): string[] {
+  const lines: string[] = [];
+  const topEdges = graph.edges.slice(0, 28);
+  for (const edge of topEdges) {
+    lines.push(`${edge.from} ${edge.relation.replace("_", " ")} ${edge.to} (${edge.reason}).`);
+  }
+  return lines;
+}
+
+function deriveEntityRelations(snippets: string[]): string[] {
+  const graph = buildKnowledgeGraph(snippets);
+  const joined = snippets.join("\n\n").toLowerCase();
+  const relations = new Set<string>();
+
+  for (const line of graphToRelationLines(graph)) {
+    relations.add(line);
+  }
+
+  // Archetype-level relation derivations from the guide's matchup triangle.
+  if (joined.includes("dive") && joined.includes("poke")) {
+    relations.add("Dive generally counters poke when dive can reach backline targets.");
+  }
+  if (joined.includes("poke") && joined.includes("brawl")) {
+    relations.add("Poke generally counters brawl on maps with long sightlines and spacing.");
+  }
+  if (joined.includes("brawl") && joined.includes("dive")) {
+    relations.add("Brawl generally counters dive through grouped sustain and peel.");
+  }
+
+  if (joined.includes("namor") && joined.includes("spider-man")) {
+    relations.add("Namor is anti-dive and can counter Spider-Man's dive angles.");
+  }
+  if (joined.includes("black panther") && joined.includes("dive")) {
+    relations.add("Black Panther is a dive hero and works best with other dive enablers and dive initiators.");
+  }
+
+  return Array.from(relations).slice(0, 30);
+}
+
 export async function searchStrategyTool(query: string): Promise<string[]> {
   const strategyPath = STRATEGY_PATHS.find((candidate) => existsSync(candidate));
   if (!strategyPath) {
@@ -353,16 +736,60 @@ export async function searchStrategyTool(query: string): Promise<string[]> {
   }
 
   const content = await readFile(strategyPath, "utf-8");
+  if (!strategyVocabularyCache) {
+    strategyVocabularyCache = new Set(
+      tokenize(content).filter((token) => token.length > 3),
+    );
+  }
   const chunks = splitStrategyChunks(content);
 
-  const queryTokens = tokenize(query);
+  const normalizedQuery = normalizeQueryText(query);
+  const relationQuery = isRelationshipQuestion(normalizedQuery);
+  const expandedQuery = relationQuery
+    ? `${normalizedQuery} counters synergies works with play with team-up anti-dive anti-poke anti-brawl dive poke brawl`
+    : normalizedQuery;
+  const queryTokens = tokenize(expandedQuery);
+  const mentionedHeroes = findMentionedHeroes(normalizedQuery);
   const ranked = chunks
-    .map((chunk) => scoreChunk(chunk, query, queryTokens))
+    .map((chunk) => scoreChunk(chunk, expandedQuery, queryTokens))
     .filter((item) => item.score > 0 || queryTokens.length === 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 12);
 
   const diverseTop = takeDiverseTop(ranked, 4);
+
+  // Hero-anchored fallback: ensure sections mentioning queried hero aliases are included.
+  if (mentionedHeroes.length > 0) {
+    const heroAnchored = chunks
+      .filter((chunk) => {
+        const lower = chunk.fullText.toLowerCase();
+        return mentionedHeroes.some((hero) => lower.includes(hero));
+      })
+      .slice(0, 3)
+      .map((chunk) => ({
+        chunk,
+        overlap: mentionedHeroes.length,
+        score: 100, // force include hero-matching context
+      }));
+    const merged = [...heroAnchored, ...diverseTop];
+    const deduped: ScoredChunk[] = [];
+    for (const item of merged) {
+      if (!deduped.some((d) => d.chunk.fullText === item.chunk.fullText)) {
+        deduped.push(item);
+      }
+      if (deduped.length >= 4) {
+        break;
+      }
+    }
+    if (deduped.length > 0) {
+      return deduped.map(({ chunk, overlap, score }) =>
+        `[${chunk.heading}] score=${score.toFixed(2)} overlap=${overlap}\n${trimSnippet(
+          chunk.body,
+          700,
+        )}`,
+      );
+    }
+  }
 
   if (diverseTop.length > 0) {
     return diverseTop.map(({ chunk, overlap, score }) =>
@@ -403,7 +830,7 @@ async function callOpenAIResponse(prompt: string): Promise<string | null> {
         {
           role: "system",
           content:
-            "You are a Marvel Rivals strategy agent. Use the provided tool context before answering. If context is missing, state assumptions briefly.",
+            "You are a Marvel Rivals strategy agent. You must answer using only facts present in the provided STRATEGY CONTEXT snippets and DERIVED RELATIONS / KNOWLEDGE GRAPH links. Do not use outside knowledge. If the answer is not supported by that context, respond with: 'I don't have enough support in the provided strategy guide context to answer that.' For relationship questions, structure reasoning explicitly as 'A -> relation -> B' and tie each relation to context support.",
         },
         {
           role: "user",
@@ -428,13 +855,30 @@ function fallbackResponse(userInput: string, context: string[]): string {
   return `I analyzed your request: "${userInput || "(no text provided)"}"\n\n${joinedContext}`;
 }
 
-export async function runAgent(input: { userInput: string; image: Blob | null; layoutPreset: string }): Promise<AgentResult> {
+export async function runAgent(input: {
+  userInput: string;
+  image: Blob | null;
+  layoutPreset: string;
+  previousImageContext?: ImageContext | null;
+}): Promise<AgentResult> {
+  await ensureStrategyVocabulary();
   const intent = detectIntent(input.userInput, Boolean(input.image));
   const tools: ToolUsage[] = [];
   const context: string[] = [];
+  const shouldRunStrategy = intent === "strategy_question" || input.userInput.trim().length > 0;
+  const shouldRunRelationshipReasoning = intent === "relationship_question";
+  const shouldRunExternalApi = intent === "external_api_lookup";
 
-  if (input.image) {
-    const yolo = await runYoloTool(input.image, input.layoutPreset);
+  // Run independent tool calls concurrently to reduce end-to-end latency.
+  const yoloTask = input.image ? runYoloTool(input.image, input.layoutPreset) : Promise.resolve(null);
+  const strategyTask = shouldRunStrategy ? searchStrategyTool(input.userInput) : Promise.resolve(null);
+  const externalApiTask = shouldRunExternalApi
+    ? callFutureApiTool(input.userInput)
+    : Promise.resolve(null);
+
+  const [yolo, snippets, apiResult] = await Promise.all([yoloTask, strategyTask, externalApiTask]);
+
+  if (yolo) {
     tools.push({
       tool: "runYoloTool",
       ok: yolo.ok,
@@ -444,24 +888,41 @@ export async function runAgent(input: { userInput: string; image: Blob | null; l
     });
     if (yolo.ok) {
       const preview = yolo.predictionClasses.slice(0, 12).join(", ");
-      context.push(
-        `YOLO summary: ${yolo.summary}\nDetected classes: ${preview || "(none detected)"}`,
-      );
+      context.push(`YOLO summary: ${yolo.summary}\nDetected classes: ${preview || "(none detected)"}`);
+      if (yolo.imageContext) {
+        context.push(
+          `IMAGE TEAM CONTEXT:\nYour team: ${yolo.imageContext.yourTeam.join(", ") || "(unknown)"}\nEnemy team: ${yolo.imageContext.enemyTeam.join(", ") || "(unknown)"}`,
+        );
+      }
     }
   }
 
-  if (intent === "strategy_question" || input.userInput.trim().length > 0) {
-    const snippets = await searchStrategyTool(input.userInput);
+  if (!input.image && input.previousImageContext) {
+    const carry = input.previousImageContext;
+    context.push(
+      `IMAGE TEAM CONTEXT (from previous upload):\nYour team: ${carry.yourTeam.join(", ") || "(unknown)"}\nEnemy team: ${carry.enemyTeam.join(", ") || "(unknown)"}`,
+    );
+  }
+
+  if (snippets) {
+    const relations = deriveEntityRelations(snippets);
     tools.push({
       tool: "searchStrategyTool",
       ok: snippets.length > 0,
       details: `Retrieved ${snippets.length} strategy snippets.`,
     });
-    context.push(`Strategy snippets:\n${snippets.map((s, i) => `[${i + 1}] ${s}`).join("\n\n")}`);
+    context.push(`STRATEGY CONTEXT:\n${snippets.map((s, i) => `[${i + 1}] ${s}`).join("\n\n")}`);
+    if (relations.length > 0) {
+      context.push(`DERIVED RELATIONS:\n${relations.map((r, i) => `[R${i + 1}] ${r}`).join("\n")}`);
+    }
+    if (shouldRunRelationshipReasoning) {
+      context.push(
+        "RELATIONSHIP ANSWER FORMAT:\n- Prefer relation triples.\n- Example: Black Panther -> works_with -> Venom (shared dive archetype in context).",
+      );
+    }
   }
 
-  if (intent === "external_api_lookup") {
-    const apiResult = await callFutureApiTool(input.userInput);
+  if (apiResult) {
     tools.push({
       tool: "callFutureApiTool",
       ok: apiResult.ok,
@@ -473,11 +934,22 @@ export async function runAgent(input: { userInput: string; image: Blob | null; l
   const prompt = [
     `User intent: ${intent}`,
     `User input: ${input.userInput || "(empty)"}`,
+    "Use only STRATEGY CONTEXT and DERIVED RELATIONS for factual claims.",
     "Tool context:",
     context.join("\n\n"),
   ]
     .filter(Boolean)
     .join("\n\n");
+
+  const hasStrategyContext = context.some((entry) => entry.startsWith("STRATEGY CONTEXT:"));
+  if (!hasStrategyContext) {
+    return {
+      intent,
+      tools,
+      context,
+      response: "I don't have enough support in the provided strategy guide context to answer that.",
+    };
+  }
 
   const llm = await callOpenAIResponse(prompt);
   return {
@@ -485,5 +957,6 @@ export async function runAgent(input: { userInput: string; image: Blob | null; l
     tools,
     context,
     response: llm || fallbackResponse(input.userInput, context),
+    imageContext: yolo?.imageContext ?? input.previousImageContext ?? undefined,
   };
 }
