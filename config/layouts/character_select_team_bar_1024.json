@@ -1,0 +1,13 @@
+{
+  "reference_width": 1024,
+  "reference_height": 553,
+  "description": "Character select: bottom team bar (6 slanted portrait slots). Equal spacing; re-tune if HUD scale changes. Calibrated on assets/reference/character_select.png.",
+  "horizontal_grid": {
+    "x": 205,
+    "y": 472,
+    "width": 92,
+    "height": 70,
+    "col_stride": 104,
+    "col_count": 6
+  }
+}

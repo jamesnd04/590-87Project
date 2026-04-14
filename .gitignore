@@ -2,6 +2,11 @@
 node_modules
 .venv
 
+# secrets (use .env.example for variable names)
+.env
+.env.local
+.env.*.local
+
 # next.js
 .next
 next-env.d.ts

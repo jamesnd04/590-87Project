@@ -1,5 +1,5 @@
-# Python deps for scripts/image_infer.py (Ultralytics quad YOLO on dropped images).
+# Python deps for scripts/image_infer.py (OpenCV layout extraction).
+# Roboflow serverless workflow runs in app/api/infer (Node fetch); no Python SDK required.
 # Suggested: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements-ml.txt
-ultralytics>=8.3.0
 opencv-python-headless>=4.8.0
 numpy>=1.24.0
