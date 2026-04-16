@@ -457,9 +457,13 @@ def recenter_ingame_row_windows(
             if ry2 - ry1 < 8:
                 recentered.append((x1, y1, x2, y2))
                 continue
-            # Search around coarse X with an expanded horizontal band.
-            sx0 = max(0, int(round(x1 - 0.9 * bw)))
-            sx1 = min(iw, int(round(x2 + 0.9 * bw)))
+            # Search a *small* horizontal band around the refined box. A wider
+            # search here tends to jump to the class-shield or rank-badge
+            # glyph sitting immediately next to each portrait, so stay close
+            # and let the layout coords + contour refinement do the heavy
+            # lifting.
+            sx0 = max(0, int(round(x1 - 0.15 * bw)))
+            sx1 = min(iw, int(round(x2 + 0.15 * bw)))
             row = frame[ry1:ry2, sx0:sx1]
             if row.size == 0 or row.shape[1] <= target_w + 2:
                 recentered.append((x1, y1, x2, y2))
@@ -604,8 +608,16 @@ def refine_icon_box(
 ) -> tuple[tuple[int, int, int, int], dict[str, Any]]:
     ih, iw = frame.shape[:2]
     coarse = clamp_box(*coarse_box, iw, ih)
-    ex = 0.22 if layout_mode == "pre_game" else 0.18
-    ey = 0.28 if layout_mode == "post_game" else 0.2
+    # In-game portraits sit right next to the class-shield and rank-badge icons,
+    # so any generous ROI around them risks Canny finding *those* contours and
+    # locking the refined box onto the wrong glyph. Keep the in-game expansion
+    # tight; pre-/post-game panels are less crowded and can stay wider.
+    if layout_mode == "pre_game":
+        ex, ey = 0.22, 0.20
+    elif layout_mode == "in_game":
+        ex, ey = 0.08, 0.10
+    else:
+        ex, ey = 0.18, 0.28
     roi_box = expand_box(coarse, ex, ey, iw, ih)
     rx1, ry1, rx2, ry2 = roi_box
     roi = frame[ry1:ry2, rx1:rx2]
