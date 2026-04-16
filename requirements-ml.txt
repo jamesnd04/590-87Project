@@ -3,3 +3,5 @@
 # Suggested: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements-ml.txt
 opencv-python-headless>=4.8.0
 numpy>=1.24.0
+torch>=2.2.0
+transformers>=4.40.0

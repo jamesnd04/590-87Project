@@ -1,8 +1,8 @@
-import { spawn } from "child_process";
 import { existsSync } from "fs";
 import { mkdir, readFile, unlink, writeFile } from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
+import { runImageInferWithWorker } from "@/lib/infer/clip-worker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -260,46 +260,8 @@ async function runRoboflowWorkflow(imagePath: string): Promise<Record<string, un
   }
 }
 
-function pythonBinary() {
-  const unixVenv = path.join(process.cwd(), ".venv", "bin", "python3");
-  if (existsSync(unixVenv)) {
-    return unixVenv;
-  }
-  const winVenv = path.join(process.cwd(), ".venv", "Scripts", "python.exe");
-  if (existsSync(winVenv)) {
-    return winVenv;
-  }
-  return process.platform === "win32" ? "python" : "python3";
-}
-
 function runImageInfer(imagePath: string, layoutPath: string | null): Promise<{ stdout: string; stderr: string; code: number | null }> {
-  const script = path.join(process.cwd(), "scripts", "image_infer.py");
-  const bin = pythonBinary();
-  const argv = [script, "--source", imagePath];
-  if (layoutPath) {
-    argv.push("--layout", layoutPath);
-  }
-
-  return new Promise((resolve) => {
-    const child = spawn(bin, argv, {
-      env: { ...process.env, PYTHONUNBUFFERED: "1" },
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (d: Buffer) => {
-      stdout += d.toString();
-    });
-    child.stderr?.on("data", (d: Buffer) => {
-      stderr += d.toString();
-    });
-    child.on("close", (code) => {
-      resolve({ stdout, stderr, code });
-    });
-    child.on("error", (err) => {
-      stderr += err.message;
-      resolve({ stdout, stderr, code: -1 });
-    });
-  });
+  return runImageInferWithWorker(imagePath, layoutPath);
 }
 
 export async function POST(req: NextRequest) {
@@ -315,7 +277,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Missing image field (expected name: image)" }, { status: 400 });
   }
 
-  const skipRoboflow = form.get("skip_roboflow") === "1" || form.get("skip_roboflow") === "true";
+  const skipRoboflowField = form.get("skip_roboflow");
+  const skipRoboflow =
+    skipRoboflowField === null ||
+    skipRoboflowField === "1" ||
+    skipRoboflowField === "true";
 
   const layoutField = form.get("layout");
   let layoutPath: string | null = null;
@@ -389,8 +355,20 @@ export async function POST(req: NextRequest) {
 
     const payload = parsed as Record<string, unknown>;
     let summaryText = typeof rec.summary === "string" ? rec.summary : "";
+    const layoutObj =
+      typeof payload.layout === "object" && payload.layout !== null
+        ? (payload.layout as Record<string, unknown>)
+        : null;
+    const layoutMode =
+      typeof layoutObj?.layout_mode === "string"
+        ? String(layoutObj.layout_mode).toLowerCase()
+        : "";
+    const isPreGameLayout = layoutMode === "pre_game";
 
-    let predictionClasses: string[] = [];
+    const initialPredictionClasses = Array.isArray(payload.prediction_classes)
+      ? payload.prediction_classes.filter((v): v is string => typeof v === "string")
+      : [];
+    let predictionClasses: string[] = [...initialPredictionClasses];
     let predictionTeams: ReturnType<typeof splitPredictionsByTeam> | null = null;
 
     const imageMeta = payload.image as { width?: unknown } | undefined;
@@ -405,6 +383,25 @@ export async function POST(req: NextRequest) {
         const withoutBlobs = omitBase64ImageBlobs(roboflow.result) as unknown;
         const trimmed = stripWorkflowNoise(withoutBlobs) as unknown;
         predictionTeams = splitPredictionsByTeam(roboflow.result, imageWidthPx);
+        if (isPreGameLayout) {
+          const mergedRows = [
+            ...predictionTeams.your_team_blue_left,
+            ...predictionTeams.enemy_team_right,
+          ]
+            .sort((a, b) => a.y - b.y)
+            .map((p, row) => ({
+              ...p,
+              row,
+              side: "your_team_blue_left" as const,
+            }));
+          predictionTeams = {
+            ...predictionTeams,
+            note:
+              "pre_game layout: enemy team slots are not present; all identified classes are assigned to your_team_blue_left.",
+            your_team_blue_left: mergedRows,
+            enemy_team_right: [],
+          };
+        }
         predictionClasses = flattenTeamClasses(predictionTeams);
         console.log(
           "[infer] YOUR TEAM (blue, left column) — predictions top→bottom:",

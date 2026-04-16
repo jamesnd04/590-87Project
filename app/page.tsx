@@ -22,7 +22,9 @@ export default function Home() {
   const [agentStatus, setAgentStatus] = useState<"idle" | "loading" | "error">("idle");
   const [agentError, setAgentError] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [layoutPreset, setLayoutPreset] = useState<string>("");
+  const [layoutPreset, setLayoutPreset] = useState<string>(
+    "config/layouts/character_select_team_bar_1024.json",
+  );
   const [hasElectronIpc, setHasElectronIpc] = useState(false);
   const [teamContext, setTeamContext] = useState<{
     yourTeam: string[];
@@ -293,15 +295,13 @@ export default function Home() {
               onChange={(e) => setLayoutPreset(e.target.value)}
               className="w-full rounded-md border border-white/[0.10] bg-black/40 px-2 py-1.5 text-[11px] text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-sky-400/60"
             >
-              <option value="">Default (post-match 12-row)</option>
-              <option value="config/layouts/post_match_1024.json">Post-match (explicit)</option>
-              <option value="config/layouts/team_panel_1024.json">YOUR TEAM (6 rows)</option>
               <option value="config/layouts/character_select_team_bar_1024.json">
-                Character select — team bar (6)
+                Pre-game
               </option>
               <option value="config/layouts/ingame_split_teams_1024.json">
-                In-game YOUR TEAM vs ENEMY (12)
+                In-game
               </option>
+              <option value="config/layouts/post_match_1024.json">Post-game</option>
             </select>
           </div>
           <label

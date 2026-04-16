@@ -19,3 +19,17 @@ next-env.d.ts
 
 # large local weights (hf download Chappieut/MarvelRivals-Detection-Suite --local-dir models/MarvelRivals-Detection-Suite)
 /models/MarvelRivals-Detection-Suite
+
+# OS / editor
+.DS_Store
+**/.DS_Store
+
+# Python cache
+__pycache__/
+*.pyc
+
+# local cache/model artifacts
+.cache/
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo

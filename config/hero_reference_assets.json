@@ -1,0 +1,763 @@
+[
+  {
+    "id": "adam-warlock",
+    "base_name": "adam-warlock",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/adam-warlock_avatar.png"
+    ]
+  },
+  {
+    "id": "adam-warlock-lord",
+    "base_name": "adam-warlock",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Adam Warlock Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "angela",
+    "base_name": "angela",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/angela_avatar.png"
+    ]
+  },
+  {
+    "id": "angela-lord",
+    "base_name": "angela",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Angela Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "black-panther",
+    "base_name": "black-panther",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/black-panther_avatar.png"
+    ]
+  },
+  {
+    "id": "black-panther-lord",
+    "base_name": "black-panther",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Black Panther Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "black-widow",
+    "base_name": "black-widow",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/black-widow_avatar.png"
+    ]
+  },
+  {
+    "id": "black-widow-lord",
+    "base_name": "black-widow",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Black Widow Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "blade",
+    "base_name": "blade",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/blade_avatar.png"
+    ]
+  },
+  {
+    "id": "blade-lord",
+    "base_name": "blade",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Blade Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "bruce-banner-lord",
+    "base_name": "bruce-banner",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Bruce Banner Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "captain-america",
+    "base_name": "captain-america",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/captain-america_avatar.png"
+    ]
+  },
+  {
+    "id": "captain-america-lord",
+    "base_name": "captain-america",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Captain America Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "cloak-and-dagger",
+    "base_name": "cloak-and-dagger",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/cloak-and-dagger_avatar.png"
+    ]
+  },
+  {
+    "id": "cloak-lord",
+    "base_name": "cloak",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Cloak Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "dagger-lord",
+    "base_name": "dagger",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Dagger Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "daredevil",
+    "base_name": "daredevil",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/daredevil_avatar.png"
+    ]
+  },
+  {
+    "id": "daredevil-lord",
+    "base_name": "daredevil",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Daredevil Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "deadpool",
+    "base_name": "deadpool",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/deadpool_avatar.png"
+    ]
+  },
+  {
+    "id": "doctor-strange",
+    "base_name": "doctor-strange",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/doctor-strange_avatar.png"
+    ]
+  },
+  {
+    "id": "doctor-strange-lord",
+    "base_name": "doctor-strange",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Doctor Strange Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "elsa-bloodstone",
+    "base_name": "elsa-bloodstone",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/elsa_bloodstone_avatar.png"
+    ]
+  },
+  {
+    "id": "emma-frost",
+    "base_name": "emma-frost",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/emma-frost_avatar.png"
+    ]
+  },
+  {
+    "id": "emma-frost-lord",
+    "base_name": "emma-frost",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Emma Frost Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "gambit",
+    "base_name": "gambit",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/gambit_avatar.png"
+    ]
+  },
+  {
+    "id": "gambit-lord",
+    "base_name": "gambit",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Gambit Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "groot",
+    "base_name": "groot",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/groot_avatar.png"
+    ]
+  },
+  {
+    "id": "groot-lord",
+    "base_name": "groot",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Groot Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "hawkeye",
+    "base_name": "hawkeye",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/hawkeye_avatar.png"
+    ]
+  },
+  {
+    "id": "hawkeye-lord",
+    "base_name": "hawkeye",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Hawkeye Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "hela",
+    "base_name": "hela",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/hela_avatar.png"
+    ]
+  },
+  {
+    "id": "hela-lord",
+    "base_name": "hela",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Hela Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "hero-hulk-lord",
+    "base_name": "hero-hulk",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Hero Hulk Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "hulk",
+    "base_name": "hulk",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/hulk_avatar.png"
+    ]
+  },
+  {
+    "id": "human-torch",
+    "base_name": "human-torch",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/human-torch_avatar.png"
+    ]
+  },
+  {
+    "id": "human-torch-lord",
+    "base_name": "human-torch",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Human Torch Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "invisible-woman",
+    "base_name": "invisible-woman",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/invisible-woman_avatar.png"
+    ]
+  },
+  {
+    "id": "invisible-woman-lord",
+    "base_name": "invisible-woman",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Invisible Woman Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "iron-fist",
+    "base_name": "iron-fist",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/iron-fist_avatar.png"
+    ]
+  },
+  {
+    "id": "iron-fist-lord",
+    "base_name": "iron-fist",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Iron Fist Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "iron-man",
+    "base_name": "iron-man",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/iron-man_avatar.png"
+    ]
+  },
+  {
+    "id": "iron-man-lord",
+    "base_name": "iron-man",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Iron Man Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "jeff-the-land-shark",
+    "base_name": "jeff-the-land-shark",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/jeff-the-land-shark_avatar.png"
+    ]
+  },
+  {
+    "id": "jeff-the-land-shark-lord",
+    "base_name": "jeff-the-land-shark",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Jeff the Land Shark Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "loki",
+    "base_name": "loki",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/loki_avatar.png"
+    ]
+  },
+  {
+    "id": "loki-lord",
+    "base_name": "loki",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Loki Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "luna-snow",
+    "base_name": "luna-snow",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/luna-snow_avatar.png"
+    ]
+  },
+  {
+    "id": "luna-snow-lord",
+    "base_name": "luna-snow",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Luna Snow Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "magik",
+    "base_name": "magik",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/magik_avatar.png"
+    ]
+  },
+  {
+    "id": "magik-lord",
+    "base_name": "magik",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Magik Deluxe Avatar 1.png",
+      "assets/RIVALS_LORD/Magik Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "magneto",
+    "base_name": "magneto",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/magneto_avatar.png"
+    ]
+  },
+  {
+    "id": "magneto-lord",
+    "base_name": "magneto",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Magneto Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "mantis",
+    "base_name": "mantis",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/mantis_avatar.png"
+    ]
+  },
+  {
+    "id": "mantis-lord",
+    "base_name": "mantis",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Mantis Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "mister-fantastic",
+    "base_name": "mister-fantastic",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/mister-fantastic_avatar.png"
+    ]
+  },
+  {
+    "id": "mister-fantastic-lord",
+    "base_name": "mister-fantastic",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Mister Fantastic Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "monster-hulk-lord",
+    "base_name": "monster-hulk",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Monster Hulk Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "moon-knight",
+    "base_name": "moon-knight",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/moon-knight_avatar.png"
+    ]
+  },
+  {
+    "id": "moon-knight-lord",
+    "base_name": "moon-knight",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Moon Knight Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "namor",
+    "base_name": "namor",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/namor_avatar.png"
+    ]
+  },
+  {
+    "id": "namor-lord",
+    "base_name": "namor",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Namor Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "peni-parker",
+    "base_name": "peni-parker",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/peni-parker_avatar.png"
+    ]
+  },
+  {
+    "id": "peni-parker-lord",
+    "base_name": "peni-parker",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Peni Parker Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "phoenix",
+    "base_name": "phoenix",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/phoenix_avatar.png"
+    ]
+  },
+  {
+    "id": "phoenix-lord",
+    "base_name": "phoenix",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Phoenix Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "psylocke",
+    "base_name": "psylocke",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/psylocke_avatar.png"
+    ]
+  },
+  {
+    "id": "psylocke-lord",
+    "base_name": "psylocke",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Psylocke Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "rocket-raccoon",
+    "base_name": "rocket-raccoon",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/rocket-raccoon_avatar.png"
+    ]
+  },
+  {
+    "id": "rocket-raccoon-lord",
+    "base_name": "rocket-raccoon",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Rocket Raccoon Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "rogue",
+    "base_name": "rogue",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/rogue_avatar.png"
+    ]
+  },
+  {
+    "id": "scarlet-witch",
+    "base_name": "scarlet-witch",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/scarlet-witch_avatar.png"
+    ]
+  },
+  {
+    "id": "scarlet-witch-lord",
+    "base_name": "scarlet-witch",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Scarlet Witch Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "spider-man",
+    "base_name": "spider-man",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/spider-man_avatar.png"
+    ]
+  },
+  {
+    "id": "spider-man-lord",
+    "base_name": "spider-man",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Spider-Man Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "squirrel-girl",
+    "base_name": "squirrel-girl",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/squirrel-girl_avatar.png"
+    ]
+  },
+  {
+    "id": "squirrel-girl-lord",
+    "base_name": "squirrel-girl",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Squirrel Girl Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "star-lord",
+    "base_name": "star-lord",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/star-lord_avatar.png"
+    ]
+  },
+  {
+    "id": "star-lord-lord",
+    "base_name": "star-lord",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Star-Lord Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "storm",
+    "base_name": "storm",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/storm_avatar.png"
+    ]
+  },
+  {
+    "id": "storm-lord",
+    "base_name": "storm",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Storm Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "the-punisher",
+    "base_name": "the-punisher",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/the-punisher_avatar.png"
+    ]
+  },
+  {
+    "id": "the-punisher-lord",
+    "base_name": "the-punisher",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/The Punisher Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "the-thing",
+    "base_name": "the-thing",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/the-thing_avatar.png"
+    ]
+  },
+  {
+    "id": "the-thing-lord",
+    "base_name": "the-thing",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/The Thing Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "thor",
+    "base_name": "thor",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/thor_avatar.png"
+    ]
+  },
+  {
+    "id": "thor-lord",
+    "base_name": "thor",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Thor Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "ultron",
+    "base_name": "ultron",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/ultron_avatar.png"
+    ]
+  },
+  {
+    "id": "ultron-lord",
+    "base_name": "ultron",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Ultron Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "venom",
+    "base_name": "venom",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/venom_avatar.png"
+    ]
+  },
+  {
+    "id": "venom-lord",
+    "base_name": "venom",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Venom Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "white-fox",
+    "base_name": "white-fox",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/white_fox_avatar.png"
+    ]
+  },
+  {
+    "id": "winter-soldier",
+    "base_name": "winter-soldier",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/winter-soldier_avatar.png"
+    ]
+  },
+  {
+    "id": "winter-soldier-lord",
+    "base_name": "winter-soldier",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Winter Soldier Deluxe Avatar.png"
+    ]
+  },
+  {
+    "id": "wolverine",
+    "base_name": "wolverine",
+    "is_lord": false,
+    "files": [
+      "assets/RIVALS_LORD/wolverine_avatar.png"
+    ]
+  },
+  {
+    "id": "wolverine-lord",
+    "base_name": "wolverine",
+    "is_lord": true,
+    "files": [
+      "assets/RIVALS_LORD/Wolverine Deluxe Avatar.png"
+    ]
+  }
+]

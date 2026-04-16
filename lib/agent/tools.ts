@@ -1,8 +1,8 @@
-import { spawn } from "child_process";
 import { existsSync } from "fs";
 import { mkdir, readFile, unlink, writeFile } from "fs/promises";
 import path from "path";
 import { externalContextLookup } from "@/lib/agent/external";
+import { runImageInferWithWorker } from "@/lib/infer/clip-worker";
 import { semanticRetrieve } from "@/lib/agent/semantic";
 
 const STRATEGY_PATHS = [
@@ -47,6 +47,11 @@ type YoloResult = {
   error?: string;
   imageContext?: ImageContext;
 };
+
+function isClipOnlyModeEnabled(): boolean {
+  const raw = process.env.CLIP_ONLY?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
 
 function detectIntent(input: string, hasImage: boolean): Intent {
   if (hasImage) {
@@ -135,45 +140,8 @@ function buildSearchPlan(intent: Intent, userInput: string): SearchSource[] {
   return Array.from(new Set(plan));
 }
 
-function pythonBinary() {
-  const unixVenv = path.join(process.cwd(), ".venv", "bin", "python3");
-  if (existsSync(unixVenv)) {
-    return unixVenv;
-  }
-  const winVenv = path.join(process.cwd(), ".venv", "Scripts", "python.exe");
-  if (existsSync(winVenv)) {
-    return winVenv;
-  }
-  return process.platform === "win32" ? "python" : "python3";
-}
-
 function runImageInfer(imagePath: string, layoutPath: string | null): Promise<{ stdout: string; stderr: string; code: number | null }> {
-  const script = path.join(process.cwd(), "scripts", "image_infer.py");
-  const argv = [script, "--source", imagePath];
-  if (layoutPath) {
-    argv.push("--layout", layoutPath);
-  }
-
-  return new Promise((resolve) => {
-    const child = spawn(pythonBinary(), argv, {
-      env: { ...process.env, PYTHONUNBUFFERED: "1" },
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (d: Buffer) => {
-      stdout += d.toString();
-    });
-    child.stderr?.on("data", (d: Buffer) => {
-      stderr += d.toString();
-    });
-    child.on("close", (code) => {
-      resolve({ stdout, stderr, code });
-    });
-    child.on("error", (err) => {
-      stderr += err.message;
-      resolve({ stdout, stderr, code: -1 });
-    });
-  });
+  return runImageInferWithWorker(imagePath, layoutPath);
 }
 
 function guessExt(file: Blob & { name?: string }) {
@@ -220,20 +188,62 @@ function splitTeamClasses(predictionClasses: string[]): ImageContext {
   };
 }
 
+function parseImageContext(raw: Record<string, unknown>, predictionClasses: string[]): ImageContext {
+  const layout = raw.layout as Record<string, unknown> | undefined;
+  const layoutMode =
+    layout && typeof layout.layout_mode === "string"
+      ? layout.layout_mode.toLowerCase()
+      : "";
+  const isPreGame = layoutMode === "pre_game";
+  const clean = predictionClasses.map((name) => name.trim()).filter(Boolean);
+  if (isPreGame) {
+    return {
+      yourTeam: clean,
+      enemyTeam: [],
+      source: "image_upload",
+    };
+  }
+
+  const teams = raw.prediction_teams as Record<string, unknown> | undefined;
+  if (teams && typeof teams === "object") {
+    const yourRows = Array.isArray(teams.your_team_blue_left)
+      ? teams.your_team_blue_left
+      : [];
+    const enemyRows = Array.isArray(teams.enemy_team_right)
+      ? teams.enemy_team_right
+      : [];
+    const yourTeam = yourRows
+      .map((r) => (r && typeof r === "object" ? (r as Record<string, unknown>).class : null))
+      .filter((v): v is string => typeof v === "string");
+    const enemyTeam = enemyRows
+      .map((r) => (r && typeof r === "object" ? (r as Record<string, unknown>).class : null))
+      .filter((v): v is string => typeof v === "string");
+    return {
+      yourTeam,
+      enemyTeam,
+      source: "image_upload",
+    };
+  }
+
+  return splitTeamClasses(predictionClasses);
+}
+
 /** Shown to the user immediately before the main answer when an image was analyzed. */
-function formatCharactersDetectedPrefix(yolo: YoloResult | null): string {
-  if (!yolo) {
+function formatCharactersDetectedPrefix(result: YoloResult | null): string {
+  if (!result) {
     return "Characters detected from image:\n(no detection result)";
   }
-  if (!yolo.ok) {
-    return `Characters detected from image:\n(detection failed: ${yolo.error || "unknown error"})`;
+  if (!result.ok) {
+    return `Characters detected from image:\n(detection failed: ${result.error || "unknown error"})`;
   }
-  const ic = yolo.imageContext;
-  const classes = yolo.predictionClasses;
+  const ic = result.imageContext;
+  const classes = result.predictionClasses;
   const lines: string[] = ["Characters detected from image:"];
   if (ic && (ic.yourTeam.length > 0 || ic.enemyTeam.length > 0)) {
     lines.push(`Your team: ${ic.yourTeam.join(", ") || "(none)"}`);
-    lines.push(`Enemy team: ${ic.enemyTeam.join(", ") || "(none)"}`);
+    if (ic.enemyTeam.length > 0) {
+      lines.push(`Enemy team: ${ic.enemyTeam.join(", ")}`);
+    }
   } else if (classes.length > 0) {
     lines.push(classes.join(", "));
   } else {
@@ -248,6 +258,26 @@ function prependDetectionToResponse(image: Blob | null, yolo: YoloResult | null,
   }
   const prefix = formatCharactersDetectedPrefix(yolo);
   return `${prefix}\n\n${body}`;
+}
+
+function buildClipOnlyImageResponse(result: YoloResult | null): string {
+  if (!result) {
+    return "Characters detected from image:\n(no detection result)";
+  }
+  if (!result.ok) {
+    return `Characters detected from image:\n(detection failed: ${result.error || "unknown error"})`;
+  }
+  const lines: string[] = ["Characters detected from image:"];
+  const ic = result.imageContext;
+  if (ic && (ic.yourTeam.length > 0 || ic.enemyTeam.length > 0)) {
+    lines.push(`Your team: ${ic.yourTeam.join(", ") || "(none)"}`);
+    if (ic.enemyTeam.length > 0) {
+      lines.push(`Enemy team: ${ic.enemyTeam.join(", ")}`);
+    }
+    return lines.join("\n");
+  }
+  lines.push(result.predictionClasses.join(", ") || "(none)");
+  return lines.join("\n");
 }
 
 export async function runYoloTool(image: Blob, layoutPreset: string): Promise<YoloResult> {
@@ -266,7 +296,7 @@ export async function runYoloTool(image: Blob, layoutPreset: string): Promise<Yo
         ok: false,
         predictionClasses: [],
         summary: "",
-        error: stderr.trim() || stdout.trim() || `YOLO pipeline exited with code ${code}`,
+        error: stderr.trim() || stdout.trim() || `CLIP pipeline exited with code ${code}`,
       };
     }
 
@@ -284,16 +314,16 @@ export async function runYoloTool(image: Blob, layoutPreset: string): Promise<Yo
     return {
       ok: true,
       predictionClasses,
-      summary: typeof parsed.summary === "string" ? parsed.summary : "YOLO completed.",
+      summary: typeof parsed.summary === "string" ? parsed.summary : "CLIP inference completed.",
       raw: parsed,
-      imageContext: splitTeamClasses(predictionClasses),
+      imageContext: parseImageContext(parsed, predictionClasses),
     };
   } catch (error) {
     return {
       ok: false,
       predictionClasses: [],
       summary: "",
-      error: error instanceof Error ? error.message : "Failed to run YOLO tool",
+      error: error instanceof Error ? error.message : "Failed to run CLIP inference tool",
     };
   } finally {
     try {
@@ -1407,6 +1437,22 @@ export async function runAgent(input: {
   // Run image analysis in parallel; text source retrieval follows a plan with fallback chaining.
   const yoloTask = input.image ? runYoloTool(input.image, input.layoutPreset) : Promise.resolve(null);
   const yolo = await yoloTask;
+  if (input.image && isClipOnlyModeEnabled()) {
+    tools.push({
+      tool: "runClipTool",
+      ok: Boolean(yolo?.ok),
+      details: yolo?.ok
+        ? `Detected ${yolo.predictionClasses.length} class entries.`
+        : yolo?.error || "CLIP inference failed",
+    });
+    return {
+      intent,
+      tools,
+      context,
+      response: buildClipOnlyImageResponse(yolo),
+      imageContext: yolo?.imageContext ?? undefined,
+    };
+  }
   let snippets: string[] = [];
   let retrievalDiagnostics: StrategyRetrievalDiagnostics | null = null;
   let heroAbilityResult: { ok: boolean; tool: HeroAbilityToolName; result: string } | null = null;
