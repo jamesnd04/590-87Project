@@ -12,6 +12,9 @@ const DEFAULT_LAYOUT = path.join(process.cwd(), "config", "scoreboard_layout.jso
 const ROBOFLOW_SERVERLESS = "https://serverless.roboflow.com";
 const DEFAULT_ROBOFLOW_WORKSPACE = "jamess-workspace-vyfdf";
 const DEFAULT_ROBOFLOW_WORKFLOW_ID = "small-object-detection-sahi";
+const DEFAULT_GEMINI_POST_GAME_MODEL = "gemini-2.0-flash";
+const GEMINI_POST_GAME_PROMPT =
+  "Analyze this post-game scoreboard from a Marvel Rivals match. Summarize how the game likely played out (team dynamics, win conditions, and why one team won). Evaluate my performance specifically (I am highlighted in yellow) in the context of my role. Infer he biggest mistakes or weaknesses from my team based on the scoreboard. Give 3–5 highly specific, actionable improvements I can apply in my next game (not generic advice). If possible, infer my role (tank/DPS/support) and suggest how I could have had more impact in that role. Be honest and critical, but focus on improvement and decision-making—not just stats.";
 
 /** Remove huge base64 image strings from Roboflow JSON (keep type + length). */
 function omitBase64ImageBlobs(value: unknown): unknown {
@@ -260,6 +263,85 @@ async function runRoboflowWorkflow(imagePath: string): Promise<Record<string, un
   }
 }
 
+async function runGeminiPostGameAnalysis(imagePath: string): Promise<{
+  ok: boolean;
+  text?: string;
+  model?: string;
+  error?: string;
+}> {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, error: "GEMINI_API_KEY not set" };
+  }
+  let imageBuffer: Buffer;
+  try {
+    imageBuffer = await readFile(imagePath);
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Could not read image for Gemini",
+    };
+  }
+  const model = process.env.GEMINI_POST_GAME_MODEL?.trim() || DEFAULT_GEMINI_POST_GAME_MODEL;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-goog-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: GEMINI_POST_GAME_PROMPT },
+              {
+                inline_data: {
+                  mime_type: "image/png",
+                  data: imageBuffer.toString("base64"),
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const data = (await res.json()) as {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{ text?: unknown }>;
+        };
+      }>;
+      error?: { message?: unknown };
+    };
+    if (!res.ok) {
+      const errMsg =
+        typeof data?.error?.message === "string" ? data.error.message : `HTTP ${res.status}`;
+      return { ok: false, model, error: errMsg };
+    }
+    const textParts: string[] = [];
+    for (const candidate of data.candidates ?? []) {
+      for (const part of candidate.content?.parts ?? []) {
+        if (typeof part.text === "string" && part.text.trim()) {
+          textParts.push(part.text.trim());
+        }
+      }
+    }
+    const text = textParts.join("\n\n").trim();
+    if (!text) {
+      return { ok: false, model, error: "Gemini returned no text" };
+    }
+    return { ok: true, model, text };
+  } catch (e) {
+    return {
+      ok: false,
+      model,
+      error: e instanceof Error ? e.message : "Gemini request failed",
+    };
+  }
+}
+
 function runImageInfer(imagePath: string, layoutPath: string | null): Promise<{ stdout: string; stderr: string; code: number | null }> {
   return runImageInferWithWorker(imagePath, layoutPath);
 }
@@ -363,7 +445,34 @@ export async function POST(req: NextRequest) {
       typeof layoutObj?.layout_mode === "string"
         ? String(layoutObj.layout_mode).toLowerCase()
         : "";
+    const isPostGameLayout = layoutMode === "post_game";
     const isPreGameLayout = layoutMode === "pre_game";
+
+    if (isPostGameLayout) {
+      const gemini = await runGeminiPostGameAnalysis(tmpPath);
+      if (!gemini.ok || !gemini.text) {
+        return NextResponse.json(
+          { ok: false, error: `Post-game Gemini analysis failed: ${String(gemini.error ?? "unknown error")}` },
+          { status: 500 },
+        );
+      }
+      return NextResponse.json({
+        ok: true,
+        summary: gemini.text,
+        analysis: gemini.text,
+        prediction_classes: [],
+        prediction_teams: null,
+        payload: {
+          ...payload,
+          gemini: {
+            provider: "google",
+            model: gemini.model,
+            prompt: GEMINI_POST_GAME_PROMPT,
+            text: gemini.text,
+          },
+        },
+      });
+    }
 
     const initialPredictionClasses = Array.isArray(payload.prediction_classes)
       ? payload.prediction_classes.filter((v): v is string => typeof v === "string")
